@@ -862,6 +862,169 @@ def test_session_bootstrap_no_history(client):
     assert resp.status_code == 200
 
 
+# ---- H5: Write-Approval Gate (risk scoring + threshold + audit) ----
+
+def test_approval_threshold_crud(client):
+    """H5f: Get and set approval threshold per user."""
+    client.post("/api/users", json={"name": "testuser"})
+
+    # Default threshold
+    resp = client.get("/api/approvals/settings/threshold?user_id=1")
+    assert resp.status_code == 200
+    assert resp.json()["threshold"] == 0.45
+
+    # Set to low
+    resp = client.patch("/api/approvals/settings/threshold?user_id=1", json={"level": "low"})
+    assert resp.status_code == 200
+    assert resp.json()["threshold"] == 0.25
+    assert resp.json()["level"] == "low"
+
+    # Set custom
+    resp = client.patch("/api/approvals/settings/threshold?user_id=1", json={"custom": 0.60})
+    assert resp.status_code == 200
+    assert resp.json()["threshold"] == 0.60
+
+
+def test_risk_scorer_low_risk_auto_approved(client):
+    """H5c: User manually adds a memory entry → risk 0.0 → auto-approved."""
+    # subsystem=memory(0.3), scope=single_add(0.1), origin=user_manual(0.0)
+    # content=small(0.2), modifies=pure_add(0.1)
+    # weighted: 0.30*0.3 + 0.25*0.1 + 0.20*0.0 + 0.10*0.2 + 0.15*0.1 = 0.09+0.025+0+0.02+0.015 = 0.15
+    resp = client.post("/api/approvals/evaluate", json={
+        "user_id": 1,
+        "subsystem": "memory",
+        "scope": "single_add",
+        "origin": "user_manual",
+        "content_chars": 80,
+        "modifies_existing": "pure_add",
+        "detail": "User added a new memory entry",
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["decision"] == "auto_approved"
+    assert data["risk_score"] < 0.45
+
+
+def test_risk_scorer_high_risk_pending(client):
+    """H5c: Background agent batch-deletes skills → high risk → pending."""
+    # subsystem=skill(0.6), scope=batch_delete(0.8), origin=agent_background(0.6)
+    # content=large(0.7), modifies=delete(0.8)
+    # weighted: 0.30*0.6 + 0.25*0.8 + 0.20*0.6 + 0.10*0.7 + 0.15*0.8 = 0.18+0.20+0.12+0.07+0.12 = 0.69
+    resp = client.post("/api/approvals/evaluate", json={
+        "user_id": 1,
+        "subsystem": "skill",
+        "scope": "batch_delete",
+        "origin": "agent_background",
+        "content_chars": 5000,
+        "modifies_existing": "delete",
+        "detail": "Background curator wants to archive 15 stale skills",
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["decision"] == "pending"
+    assert data["risk_score"] >= 0.45
+    assert "pending_id" in data
+
+
+def test_approval_gate_approve_reject(client):
+    """H5e: Approve and reject pending items."""
+    # Create a pending item
+    resp = client.post("/api/approvals/evaluate", json={
+        "user_id": 1,
+        "subsystem": "dna",
+        "scope": "single_update",
+        "origin": "agent_background",
+        "content_chars": 200,
+        "modifies_existing": "modify",
+        "detail": "Agent wants to update DNA with new tool",
+    })
+    data = resp.json()
+    assert data["decision"] == "pending"  # DNA + background + modify should be > 0.45
+    pending_id = data["pending_id"]
+
+    # List pending
+    resp = client.get("/api/approvals/pending?user_id=1")
+    assert resp.status_code == 200
+    assert len(resp.json()) == 1
+
+    # Reject
+    resp = client.post(f"/api/approvals/pending/{pending_id}/reject?user_id=1")
+    assert resp.status_code == 200
+    assert resp.json()["decision"] == "rejected"
+
+
+def test_approval_audit_log(client):
+    """H5d: Auto-approved writes appear in the audit log."""
+    # Create several auto-approved writes
+    for i in range(3):
+        client.post("/api/approvals/evaluate", json={
+            "user_id": 1,
+            "subsystem": "memory",
+            "scope": "single_add",
+            "origin": "user_manual",
+            "content_chars": 50,
+            "modifies_existing": "pure_add",
+            "detail": f"Auto-approved write #{i}",
+        })
+
+    resp = client.get("/api/approvals/log?user_id=1&limit=10")
+    assert resp.status_code == 200
+    log = resp.json()
+    assert len(log) == 3
+    for entry in log:
+        assert entry["decision"] == "auto_approved"
+
+
+def test_approval_threshold_effect(client):
+    """H5f: Changing threshold changes what gets auto-approved."""
+    # With default threshold (0.45), a moderate-risk op should be auto-approved
+    # subsystem=memory(0.3), scope=single_update(0.35), origin=agent_foreground(0.3)
+    # content=medium(0.4), modifies=modify(0.5)
+    # weighted: 0.09+0.0875+0.06+0.04+0.075 = 0.3525 < 0.45 → auto
+    resp = client.post("/api/approvals/evaluate", json={
+        "user_id": 1,
+        "subsystem": "memory",
+        "scope": "single_update",
+        "origin": "agent_foreground",
+        "content_chars": 300,
+        "modifies_existing": "modify",
+        "detail": "Agent updates a memory entry",
+    })
+    assert resp.json()["decision"] == "auto_approved"
+
+    # Now set threshold to minimal (0.05)
+    client.patch("/api/approvals/settings/threshold?user_id=1", json={"level": "minimal"})
+
+    # Same operation should now require approval
+    resp = client.post("/api/approvals/evaluate", json={
+        "user_id": 1,
+        "subsystem": "memory",
+        "scope": "single_update",
+        "origin": "agent_foreground",
+        "content_chars": 300,
+        "modifies_existing": "modify",
+        "detail": "Agent updates a memory entry",
+    })
+    assert resp.json()["decision"] == "pending"
+
+
+def test_approval_full_auto(client):
+    """H5f: Full auto (1.00) never requires approval."""
+    client.patch("/api/approvals/settings/threshold?user_id=1", json={"level": "full_auto"})
+
+    # Even the highest-risk operation should pass
+    resp = client.post("/api/approvals/evaluate", json={
+        "user_id": 1,
+        "subsystem": "snapshot_delete",
+        "scope": "full_clear",
+        "origin": "daemon",
+        "content_chars": 10000,
+        "modifies_existing": "delete",
+        "detail": "Daemon clears all snapshots",
+    })
+    assert resp.json()["decision"] == "auto_approved"
+
+
 def test_context_refresh(client):
     """Refreshing context after new data is added should update it."""
     client.post("/api/users", json={"name": "testuser"})
