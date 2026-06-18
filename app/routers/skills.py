@@ -7,6 +7,7 @@ from app.database import get_db
 from app.models.skill_card import SkillCard
 from app.schemas.skill_card import SkillCardCreate, SkillCardUpdate, SkillCardOut
 from app.services.curator import run_curation, get_stale_skills, manually_archive, manually_restore
+from app.services.skill_extractor import detect_triggers, extract_skill_rules, save_extracted_skill
 
 router = APIRouter(prefix="/api/skills", tags=["skills"])
 
@@ -140,3 +141,53 @@ def restore_skill(skill_id: int, db: DBSession = Depends(get_db)):
     if "error" in result:
         raise HTTPException(404, result["error"])
     return result
+
+
+# ── H3: Auto Skill Extraction ─────────────────────────
+
+@router.post("/extract")
+def trigger_skill_extraction(messages_json: str,
+                             db: DBSession = Depends(get_db)):
+    """H3: Analyze conversation messages, detect triggers, extract SkillCard."""
+    try:
+        import json as _json
+        messages = _json.loads(messages_json)
+    except Exception:
+        raise HTTPException(400, "messages_json 格式错误")
+
+    triggers = detect_triggers(messages)
+
+    if not triggers["should_extract"]:
+        return {"triggered": False, "trigger_type": triggers["trigger_type"],
+                "tool_count": triggers["tool_count"],
+                "error_count": triggers["error_count"],
+                "user_corrections": triggers["user_corrections"],
+                "explicit_trigger": triggers["explicit_trigger"],
+                "reason": "no_trigger"}
+
+    skill_data = extract_skill_rules(messages, triggers)
+    if not skill_data:
+        return {"triggered": True, "trigger_type": triggers["trigger_type"],
+                "success": False, "reason": "extraction_failed"}
+
+    save_result = save_extracted_skill(db, skill_data)
+
+    return {
+        "triggered": True,
+        "trigger_type": triggers["trigger_type"],
+        "success": True,
+        "skill_data": skill_data,
+        "save_result": save_result,
+    }
+
+
+@router.post("/detect-triggers")
+def check_triggers(messages_json: str):
+    """H3a: Only detect triggers, don't extract. For testing."""
+    try:
+        import json as _json
+        messages = _json.loads(messages_json)
+    except Exception:
+        raise HTTPException(400, "messages_json 格式错误")
+
+    return detect_triggers(messages)

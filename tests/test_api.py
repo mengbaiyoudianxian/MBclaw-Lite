@@ -2009,6 +2009,117 @@ def test_utopia_discover_endpoint(client):
     assert "sources" in resp.json()
 
 
+# ---- H3: Auto Skill Extraction ----
+
+def test_skill_extraction_tool_heavy(client):
+    """H3a: 5+ tool calls triggers extraction."""
+    messages = [
+        {"role": "user", "content": "帮我分析一下这个数据"},
+        {"role": "tool", "content": "reading file", "name": "read_file"},
+        {"role": "tool", "content": "parsing csv", "name": "parse_csv"},
+        {"role": "tool", "content": "running analysis", "name": "run_analysis"},
+        {"role": "tool", "content": "generating chart", "name": "generate_chart"},
+        {"role": "tool", "content": "saving output", "name": "save_file"},
+        {"role": "assistant", "content": "分析完成，图表已保存"},
+    ]
+
+    resp = client.post("/api/skills/extract", params={
+        "messages_json": json.dumps(messages),
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["triggered"] is True
+    assert data["trigger_type"] == "tool_heavy"
+    assert data["success"] is True
+    assert data["save_result"]["action"] in ("created", "updated_by_hash")
+    assert "skill_id" in data["save_result"]
+
+
+def test_skill_extraction_explicit_trigger(client):
+    """H3a: User says '记住这个做法' → forced extraction."""
+    messages = [
+        {"role": "user", "content": "试试用 pytest --cov 来测"},
+        {"role": "assistant", "content": "好的，运行 pytest --cov"},
+        {"role": "user", "content": "对了，记住这个做法，以后测试都用这个"},
+    ]
+
+    resp = client.post("/api/skills/extract", params={
+        "messages_json": json.dumps(messages),
+    })
+    data = resp.json()
+    assert data["triggered"] is True
+    assert data["trigger_type"] == "explicit"
+    assert data["success"] is True
+
+
+def test_skill_extraction_error_fix(client):
+    """H3a: 2+ error-correction cycles triggers extraction."""
+    messages = [
+        {"role": "user", "content": "帮我改那个 bug"},
+        {"role": "assistant", "content": "遇到了 error: KeyError, 我换个方式"},
+        {"role": "user", "content": "不对，应该用 get() 不是直接索引"},
+        {"role": "assistant", "content": "明白，已改用 .get()"},
+        {"role": "assistant", "content": "又报了 error: ConnectionError"},
+        {"role": "user", "content": "不是这样，换个端口试试"},
+        {"role": "assistant", "content": "改好了，用 8080 端口就可以"},
+    ]
+
+    resp = client.post("/api/skills/extract", params={
+        "messages_json": json.dumps(messages),
+    })
+    data = resp.json()
+    assert data["triggered"] is True
+    assert data["trigger_type"] == "error_fix"
+
+
+def test_skill_extraction_no_trigger(client):
+    """H3a: Regular conversation without triggers → no extraction."""
+    messages = [
+        {"role": "user", "content": "今天天气怎么样"},
+        {"role": "assistant", "content": "今天晴天，25度"},
+    ]
+
+    resp = client.post("/api/skills/extract", params={
+        "messages_json": json.dumps(messages),
+    })
+    data = resp.json()
+    assert data["triggered"] is False
+
+
+def test_skill_extraction_detection_endpoint(client):
+    """H3a: /api/skills/detect-triggers endpoint."""
+    messages = [
+        {"role": "user", "content": "记住这个方案"},
+    ]
+
+    resp = client.post("/api/skills/detect-triggers", params={
+        "messages_json": json.dumps(messages),
+    })
+    data = resp.json()
+    assert data["should_extract"] is True
+    assert data["explicit_trigger"] is True
+
+
+def test_skill_extraction_dedup(client):
+    """H3c: Extracting same trigger twice → update, not duplicate."""
+    messages = [
+        {"role": "user", "content": "记住：用 curl 测试 API"},
+    ]
+
+    # First extraction
+    resp = client.post("/api/skills/extract", params={
+        "messages_json": json.dumps(messages),
+    })
+    assert resp.json()["save_result"]["action"] == "created"
+    first_id = resp.json()["save_result"]["skill_id"]
+
+    # Second extraction with same trigger → should update
+    resp = client.post("/api/skills/extract", params={
+        "messages_json": json.dumps(messages),
+    })
+    assert resp.json()["save_result"]["action"] in ("updated", "updated_by_hash")
+
+
 def test_context_refresh(client):
     """Refreshing context after new data is added should update it."""
     client.post("/api/users", json={"name": "testuser"})
