@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MBclaw-Lite - Claw Machine Simulation</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>MBclaw-Lite</h1>
+            <p class="subtitle">A lightweight claw machine simulation</p>
+        </header>
+        
+        <div class="game-area">
+            <div class="machine">
+                <div class="machine-glass">
+                    <div class="claw-container">
+                        <div class="claw-arm"></div>
+                        <div class="claw">
+                            <div class="claw-finger left"></div>
+                            <div class="claw-finger right"></div>
+                        </div>
+                    </div>
+                    <div class="prizes">
+                        <!-- Prizes will be dynamically generated -->
+                    </div>
+                </div>
+                <div class="machine-controls">
+                    <div class="control-panel">
+                        <button id="moveLeft" class="control-btn">←</button>
+                        <div class="vertical-controls">
+                            <button id="moveUp" class="control-btn">↑</button>
+                            <button id="moveDown" class="control-btn">↓</button>
+                        </div>
+                        <button id="moveRight" class="control-btn">→</button>
+                    </div>
+                    <button id="grabBtn" class="grab-btn">GRAB!</button>
+                </div>
+            </div>
+            
+            <div class="score-panel">
+                <div class="score">
+                    <span class="score-label">Score:</span>
+                    <span id="scoreValue" class="score-value">0</span>
+                </div>
+                <div class="attempts">
+                    <span class="attempts-label">Attempts:</span>
+                    <span id="attemptsValue" class="attempts-value">3</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="instructions">
+            <h2>How to Play</h2>
+            <ul>
+                <li>Use arrow keys or buttons to move the claw</li>
+                <li>Press Space or click GRAB to drop the claw</li>
+                <li>Try to grab prizes to score points</li>
+                <li>You have 3 attempts per round</li>
+            </ul>
+        </div>
+        
+        <footer>
+            <p>MBclaw-Lite &copy; 2026 | A browser-based claw machine simulation</p>
+        </footer>
+    </div>
+    
+    <script src="js/game.js"></script>
+</body>
+</html>
