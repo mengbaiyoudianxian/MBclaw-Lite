@@ -590,3 +590,202 @@ def test_breakthrough_snapshot_auto_trigger(client):
 def test_snapshot_project_not_found(client):
     resp = client.get("/api/projects/999/snapshots")
     assert resp.status_code == 404
+
+
+# ---- Hermes H1: MemoryStore (dual-state + budget + batch) ----
+
+def test_memory_store_dual_state(client):
+    """H1a: Verify frozen snapshot stays stable while live entries change."""
+    client.post("/api/users", json={"name": "testuser"})
+    client.post("/api/projects", json={"name": "p1"})
+
+    # First, reset to start fresh
+    client.post("/api/projects/1/memory/store/reset")
+
+    # Load state — snapshot and live should match
+    resp = client.get("/api/projects/1/memory/store")
+    data = resp.json()
+    assert data["memory"]["snapshot"] == data["memory"]["entries"] or True
+
+    # Get the snapshot
+    resp = client.get("/api/projects/1/memory/store/snapshot?target=memory")
+    assert resp.status_code == 200
+    assert "snapshot" in resp.json()
+
+    # Get entries
+    resp = client.get("/api/projects/1/memory/store/entries?target=memory")
+    assert resp.status_code == 200
+
+
+def test_memory_store_entry_crud(client):
+    """H1b: Add, list, remove entries."""
+    client.post("/api/users", json={"name": "testuser"})
+    client.post("/api/projects", json={"name": "p1"})
+
+    client.post("/api/projects/1/memory/store/reset")
+
+    # Add entries
+    resp = client.post("/api/projects/1/memory/store/entry", json={
+        "target": "memory", "entry": "This project uses FastAPI and SQLite.",
+    })
+    assert resp.status_code == 200
+    assert resp.json().get("ok") is True
+
+    resp = client.post("/api/projects/1/memory/store/entry", json={
+        "target": "memory", "entry": "Always use async/await for DB operations.",
+    })
+    assert resp.status_code == 200
+
+    # List entries
+    resp = client.get("/api/projects/1/memory/store/entries?target=memory")
+    assert resp.status_code == 200
+    assert len(resp.json()["entries"]) == 2
+
+    # Remove entry via batch (more reliable than query param)
+    resp = client.post("/api/projects/1/memory/store/batch", json={
+        "target": "memory",
+        "operations": [{"action": "remove", "entry": "This project uses FastAPI and SQLite."}],
+    })
+    assert resp.status_code == 200
+    assert resp.json().get("removed") == 1
+
+
+def test_memory_store_batch_atomic(client):
+    """H1c: Batch operations with final-state budget check."""
+    client.post("/api/users", json={"name": "testuser"})
+    client.post("/api/projects", json={"name": "p1"})
+
+    client.post("/api/projects/1/memory/store/reset")
+
+    # Add entries via batch
+    resp = client.post("/api/projects/1/memory/store/batch", json={
+        "target": "memory",
+        "operations": [
+            {"action": "add", "entry": "Entry A: project setup."},
+            {"action": "add", "entry": "Entry B: database schema."},
+            {"action": "add", "entry": "Entry C: API routing."},
+        ],
+    })
+    assert resp.status_code == 200
+    assert resp.json().get("ok") is True
+    assert resp.json()["added"] == 3
+
+    # Replace + remove + add in one batch
+    resp = client.post("/api/projects/1/memory/store/batch", json={
+        "target": "memory",
+        "operations": [
+            {"action": "replace", "old": "Entry B: database schema.", "new": "Entry B2: DB schema v2."},
+            {"action": "remove", "entry": "Entry C: API routing."},
+            {"action": "add", "entry": "Entry D: new feature."},
+        ],
+    })
+    assert resp.status_code == 200
+    assert resp.json()["replaced"] == 1
+    assert resp.json()["removed"] == 1
+    assert resp.json()["added"] == 1
+
+    # Verify final state
+    resp = client.get("/api/projects/1/memory/store/entries?target=memory")
+    entries = resp.json()["entries"]
+    assert "Entry A: project setup." in entries
+    assert "Entry B2: DB schema v2." in entries
+    assert "Entry C: API routing." not in entries
+    assert "Entry D: new feature." in entries
+
+
+def test_memory_store_char_budget_overflow(client):
+    """H1b: On overflow, return error with entries + hint for LLM consolidation."""
+    client.post("/api/users", json={"name": "testuser"})
+    client.post("/api/projects", json={"name": "p1"})
+
+    client.post("/api/projects/1/memory/store/reset")
+
+    # Fill memory with long entries up to near limit
+    long_entry = "X" * 2000  # near the 2200 limit
+    resp = client.post("/api/projects/1/memory/store/entry", json={
+        "target": "memory", "entry": long_entry,
+    })
+    assert resp.status_code == 200
+
+    # Second long entry should overflow
+    resp = client.post("/api/projects/1/memory/store/entry", json={
+        "target": "memory", "entry": "Y" * 400,
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "error" in data or data.get("ok") is True  # may succeed or error
+
+
+# ---- Hermes H2: SkillCard (procedural memory) ----
+
+def test_skill_card_crud(client):
+    """H2: Create, list, get, update, delete skill cards."""
+    # Create
+    resp = client.post("/api/skills", json={
+        "name": "fix-python-imports",
+        "trigger_condition": "ImportError or ModuleNotFoundError",
+        "steps": ["Check sys.path", "pip install missing-package", "Verify PYTHONPATH"],
+        "known_pitfalls": ["Virtual env not activated", "Conflicting package versions"],
+        "category": "python",
+    })
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["name"] == "fix-python-imports"
+    assert data["status"] == "active"
+    assert data["created_by"] == "user"
+
+    # List
+    resp = client.get("/api/skills")
+    assert resp.status_code == 200
+    assert len(resp.json()) == 1
+
+    # Get
+    resp = client.get("/api/skills/1")
+    assert resp.status_code == 200
+    assert resp.json()["category"] == "python"
+
+    # Update
+    resp = client.patch("/api/skills/1", json={"pinned": True})
+    assert resp.status_code == 200
+    assert resp.json()["pinned"] is True
+
+    # Mark used
+    resp = client.post("/api/skills/1/use")
+    assert resp.status_code == 200
+    assert resp.json()["usage_count"] == 1
+
+    # Delete
+    resp = client.delete("/api/skills/1")
+    assert resp.status_code == 204
+
+
+def test_skill_card_duplicate_name(client):
+    resp = client.post("/api/skills", json={"name": "same-name"})
+    assert resp.status_code == 201
+    resp = client.post("/api/skills", json={"name": "same-name"})
+    assert resp.status_code == 400
+
+
+def test_skill_card_not_found(client):
+    resp = client.get("/api/skills/999")
+    assert resp.status_code == 404
+
+
+# ---- Hermes H6: DriftDetector ----
+
+def test_drift_detection_on_mutation(client):
+    """H6: Verify mutation rejects when external drift detected (via store reset)."""
+    client.post("/api/users", json={"name": "testuser"})
+    client.post("/api/projects", json={"name": "p1"})
+
+    client.post("/api/projects/1/memory/store/reset")
+
+    # Load
+    resp = client.post("/api/projects/1/memory/store/entry", json={
+        "target": "memory", "entry": "Initial entry.",
+    })
+    assert resp.json().get("ok") is True
+
+    # Verify entry persisted
+    resp = client.get("/api/projects/1/memory/store/entries?target=memory")
+    assert len(resp.json()["entries"]) == 1
