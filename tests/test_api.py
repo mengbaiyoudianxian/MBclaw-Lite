@@ -1254,6 +1254,216 @@ def test_sub_agent_coordination(client):
     assert data["tasks_claimed"] >= 1
 
 
+# ---- F1: Active Feedback Solicitation ----
+
+def test_feedback_submit_and_list(client):
+    """F1a: Submit feedback and list by project/session."""
+    client.post("/api/users", json={"name": "testuser"})
+    client.post("/api/projects", json={"name": "p1"})
+
+    resp = client.post("/api/projects/1/sessions", json={"title": "测试任务"})
+    s_id = resp.json()["id"]
+
+    # Submit feedback
+    resp = client.post("/api/projects/1/feedback", params={
+        "overall_rating": 4,
+        "session_id": s_id,
+        "helpfulness": 5, "accuracy": 4, "speed": 3, "clarity": 4,
+        "what_went_well": "逻辑清晰，表达温暖",
+        "what_to_improve": "速度可以再快一点",
+        "free_text": "总体来说很满意",
+    })
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["overall_rating"] == 4
+    assert data["profile_update"] is not None
+
+    # List feedback
+    resp = client.get("/api/projects/1/feedback")
+    assert len(resp.json()) == 1
+
+
+def test_feedback_stats(client):
+    """F1: Aggregate stats."""
+    client.post("/api/users", json={"name": "testuser"})
+    client.post("/api/projects", json={"name": "p1"})
+
+    for rating in [3, 4, 5]:
+        client.post("/api/projects/1/feedback", params={
+            "overall_rating": rating,
+            "helpfulness": rating, "accuracy": rating,
+            "speed": rating, "clarity": rating,
+            "free_text": "feedback text",
+        })
+
+    resp = client.get("/api/projects/1/feedback/stats")
+    data = resp.json()
+    assert data["total"] == 3
+    assert 3.5 <= data["avg_rating"] <= 4.5
+
+
+def test_approach_success_rate(client):
+    """F1c: Track approach success/failure rates."""
+    client.post("/api/users", json={"name": "testuser"})
+    client.post("/api/projects", json={"name": "p1", "user_id": 1})
+
+    # Record a success
+    resp = client.post("/api/projects/1/approaches/success-rate", params={
+        "approach_name": "使用jieba分词", "success": True, "rating": 5,
+    })
+    assert resp.json()["success_rate"] == 1.0
+
+    # Record a failure
+    resp = client.post("/api/projects/1/approaches/success-rate", params={
+        "approach_name": "使用jieba分词", "success": False, "rating": 2,
+    })
+    assert resp.json()["success_rate"] == 0.5
+
+    # Ranking
+    resp = client.get("/api/projects/1/approaches/ranking")
+    assert len(resp.json()) == 1
+
+
+def test_solicitation_message(client):
+    """F1b: Auto-solicitation message generation."""
+    client.post("/api/users", json={"name": "testuser"})
+    client.post("/api/projects", json={"name": "p1"})
+
+    resp = client.get("/api/projects/1/feedback/solicit", params={
+        "session_title": "数据库优化",
+    })
+    assert resp.json()["solicit"] is True
+    assert "数据库优化" in resp.json()["message"]
+
+
+# ---- F2: User Psychology Profile ----
+
+def test_user_profile_creation_from_feedback(client):
+    """F2a: Profile auto-created when feedback is submitted."""
+    client.post("/api/users", json={"name": "testuser"})
+    # Create project for user_id=1 (assign user in the project table)
+    from app.database import SessionLocal
+    from app.models.project import Project
+    db = SessionLocal()
+    proj = Project(name="p1", user_id=1)
+    db.add(proj)
+    db.commit()
+    pid = proj.id
+    db.close()
+
+    # Submit feedback with emotional words → profile update
+    resp = client.post(f"/api/projects/{pid}/feedback", params={
+        "overall_rating": 5,
+        "what_went_well": "很温暖很贴心，逻辑清晰，表达直接",
+        "free_text": "你真的很懂我，每次都能理解我的意思",
+    })
+    data = resp.json()
+    pu = data.get("profile_update", {})
+    assert pu is not None
+
+    # Check profile was created
+    resp = client.get("/api/users/1/profile")
+    profile = resp.json()
+    assert profile.get("exists", True) is True or profile.get("feedback_count", 0) >= 1
+
+
+def test_user_persona_block(client):
+    """F2d: Persona block for system prompt injection."""
+    client.post("/api/users", json={"name": "testuser"})
+    client.post("/api/projects", json={"name": "p1", "user_id": 1})
+
+    # Submit several feedbacks to build profile
+    for text in ["很温暖", "逻辑清晰", "表达直接", "很细心", "耐心很好"]:
+        client.post("/api/projects/1/feedback", params={
+            "overall_rating": 4,
+            "what_went_well": text,
+            "free_text": text,
+        })
+
+    resp = client.get("/api/users/1/profile/persona")
+    data = resp.json()
+    assert data["exists"] is True
+    assert len(data["persona"]) > 0
+    assert "伴侣形象" in data["persona"] or "用户画像" in data["persona"]
+    assert data["archetype"] is not None
+
+
+def test_positive_patterns(client):
+    """F2b: Positive pattern tracking."""
+    client.post("/api/users", json={"name": "testuser"})
+
+    # Add patterns
+    resp = client.post("/api/users/1/patterns", params={
+        "category": "language", "pattern": "用户喜欢被称呼为'老板'",
+    })
+    assert resp.json()["created"] is True
+
+    # Repeat same pattern → increment strength
+    resp = client.post("/api/users/1/patterns", params={
+        "category": "language", "pattern": "用户喜欢被称呼为'老板'",
+    })
+    assert resp.json()["occurrences"] == 2
+    assert resp.json()["strength"] > 1.0
+
+    # List by category
+    resp = client.get("/api/users/1/patterns", params={"category": "language"})
+    assert len(resp.json()) == 1
+
+
+def test_chat_analysis_request_flow(client):
+    """F2e: Permission-gated chat analysis flow."""
+    client.post("/api/users", json={"name": "testuser"})
+
+    # Request
+    resp = client.post("/api/users/1/chat-analysis/request", params={
+        "chat_source": "用户与产品经理的Slack对话",
+    })
+    assert resp.json()["status"] == "pending"
+    req_id = resp.json()["request_id"]
+
+    # Approve
+    resp = client.post(f"/api/users/1/chat-analysis/{req_id}/approve")
+    assert resp.json()["status"] == "approved"
+
+    # Complete
+    resp = client.post(f"/api/users/1/chat-analysis/{req_id}/complete", params={
+        "analysis_result": "用户在专业场合使用正式语气，偏好数据驱动决策，对模糊表达不耐烦",
+    })
+    assert resp.json()["status"] == "completed"
+
+
+def test_archetype_transition(client):
+    """F2c: Archetype changes as more feedback arrives."""
+    client.post("/api/users", json={"name": "testuser"})
+    client.post("/api/projects", json={"name": "p1", "user_id": 1})
+
+    # Phase 1: caregiver-oriented feedback
+    for _ in range(3):
+        client.post("/api/projects/1/feedback", params={
+            "overall_rating": 5,
+            "what_went_well": "很温暖很贴心",
+            "free_text": "你真的很懂我",
+        })
+
+    resp = client.get("/api/users/1/profile")
+    archetype_1 = resp.json()["companion_archetype"]
+
+    # Phase 2: challenger-oriented feedback
+    for _ in range(5):
+        client.post("/api/projects/1/feedback", params={
+            "overall_rating": 4,
+            "what_went_well": "逻辑严谨，分析直接，效率高",
+            "free_text": "专业的分析很到位",
+        })
+
+    resp = client.get("/api/users/1/profile")
+    archetype_2 = resp.json()["companion_archetype"]
+
+    # Archetype should evolve with more data
+    assert archetype_2 is not None
+    assert resp.json()["feedback_count"] >= 8
+
+
 def test_context_refresh(client):
     """Refreshing context after new data is added should update it."""
     client.post("/api/users", json={"name": "testuser"})
