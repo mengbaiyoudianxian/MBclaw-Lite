@@ -9,6 +9,8 @@ from app.services.classification_service import classify_session
 from app.services.memory_service import dream
 
 _last_request_time = time.time()
+_last_curation_time = 0.0   # epoch timestamp of last curation run
+CURATION_INTERVAL = 86400   # 24 hours
 _lock = threading.Lock()
 _scheduler_started = False
 
@@ -58,8 +60,23 @@ async def _idle_loop(idle_threshold: int = 120, check_interval: int = 30):
                     dream(db, proj)
                 except Exception:
                     pass
+
+            # H4: Curator — run once per 24h
+            _run_curator_if_needed(db)
         finally:
             db.close()
+
+
+def _run_curator_if_needed(db: DBSession):
+    global _last_curation_time
+    now = time.time()
+    if now - _last_curation_time >= CURATION_INTERVAL:
+        try:
+            from app.services.curator import run_curation
+            run_curation(db)
+            _last_curation_time = now
+        except Exception:
+            pass
 
 
 def start_idle_scheduler(idle_threshold: int = 120, check_interval: int = 30):

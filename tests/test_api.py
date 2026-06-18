@@ -1601,6 +1601,174 @@ def test_collision_context_for_bootstrap(client):
     assert "记忆+技能融合方案" in "\n".join(data["lines"])
 
 
+# ---- Project 8: i18n Multi-Language ----
+
+def test_i18n_list_locales(client):
+    resp = client.get("/api/i18n/locales")
+    assert resp.status_code == 200
+    locales = resp.json()
+    assert "zh_CN" in locales
+    assert "en_US" in locales
+    assert "ja_JP" in locales
+
+
+def test_i18n_translate_single(client):
+    resp = client.get("/api/i18n/translate", params={"key": "errors.404", "locale": "zh_CN"})
+    assert resp.json()["value"] == "未找到"
+
+    resp = client.get("/api/i18n/translate", params={"key": "errors.404", "locale": "en_US"})
+    assert resp.json()["value"] == "Not Found"
+
+    resp = client.get("/api/i18n/translate", params={"key": "errors.404", "locale": "ja_JP"})
+    assert "見" in resp.json()["value"]
+
+
+def test_i18n_translate_batch(client):
+    resp = client.get("/api/i18n/translate/batch", params={
+        "keys": "labels.project,labels.session,api.user_created",
+        "locale": "zh_CN",
+    })
+    data = resp.json()
+    assert data["labels.project"] == "项目"
+    assert data["api.user_created"] == "用户创建成功"
+
+
+def test_i18n_explain_error(client):
+    resp = client.get("/api/i18n/explain/404", params={"locale": "zh_CN"})
+    data = resp.json()
+    assert data["error_code"] == "404"
+    assert data["title"] == "未找到"
+    assert len(data["causes"]) > 0
+    assert len(data["solutions"]) > 0
+
+    # With context interpolation
+    resp = client.get("/api/i18n/explain/429", params={
+        "locale": "zh_CN", "retry_after": "30",
+    })
+    data = resp.json()
+    assert "30" in data["detail"]
+
+
+def test_i18n_detect_locale(client):
+    resp = client.get("/api/i18n/detect", headers={"Accept-Language": "zh-CN,zh;q=0.9"})
+    assert resp.json()["detected_locale"] == "zh_CN"
+
+    resp = client.get("/api/i18n/detect", headers={"Accept-Language": "ja"})
+    assert resp.json()["detected_locale"] == "ja_JP"
+
+    resp = client.get("/api/i18n/detect")
+    assert resp.json()["detected_locale"] == "en_US"
+
+
+def test_i18n_fallback(client):
+    """Unknown locale falls back to English."""
+    resp = client.get("/api/i18n/translate", params={
+        "key": "errors.404", "locale": "fr_FR",
+    })
+    assert resp.json()["value"] == "Not Found"
+
+
+# ---- H4: Curator Auto-Archive ----
+
+def test_curator_stale_and_archive(client):
+    """H4a: Curator marks skills stale (30d) and archived (90d)."""
+    from app.database import SessionLocal
+    from app.models.skill_card import SkillCard
+    from app.services.curator import run_curation
+    from datetime import datetime, timedelta
+
+    db = SessionLocal()
+    now = datetime(2026, 6, 18)
+
+    # Active skill used 40 days ago → should go stale
+    s1 = SkillCard(name="旧技能A", status="active", created_by="agent",
+                   last_used_at=(now - timedelta(days=40)).isoformat(),
+                   created_at=(now - timedelta(days=50)).isoformat())
+    db.add(s1)
+
+    # Active skill used 100 days ago → should archive
+    s2 = SkillCard(name="旧技能B", status="active", created_by="agent",
+                   last_used_at=(now - timedelta(days=100)).isoformat(),
+                   created_at=(now - timedelta(days=110)).isoformat())
+    db.add(s2)
+
+    # Pinned skill → skipped
+    s3 = SkillCard(name="钉选技能", status="active", created_by="agent", pinned=True,
+                   last_used_at=(now - timedelta(days=100)).isoformat(),
+                   created_at=(now - timedelta(days=110)).isoformat())
+    db.add(s3)
+
+    # User-created skill → skipped
+    s4 = SkillCard(name="用户技能", status="active", created_by="user",
+                   last_used_at=(now - timedelta(days=100)).isoformat(),
+                   created_at=(now - timedelta(days=110)).isoformat())
+    db.add(s4)
+
+    # Recently created → seed-on-first-sight skipped
+    s5 = SkillCard(name="新技能", status="active", created_by="agent",
+                   last_used_at=(now - timedelta(days=1)).isoformat(),
+                   created_at=(now - timedelta(days=1)).isoformat())
+    db.add(s5)
+
+    db.commit()
+
+    # Run curation
+    summary = run_curation(db, now_override=now)
+    db.commit()
+
+    assert summary["stale_count"] == 1
+    assert summary["archived_count"] == 1
+    assert summary["skipped_pinned"] >= 1
+    assert summary["skipped_user"] >= 1
+    assert summary["skipped_first_seen"] >= 1
+
+    # Verify statuses
+    db.refresh(s1)
+    db.refresh(s2)
+    db.refresh(s3)
+    assert s1.status == "stale"
+    assert s2.status == "archived"
+    assert s3.status == "active"   # pinned, skipped
+
+    db.close()
+
+
+def test_curator_api(client):
+    """H4: Curator API — manual trigger + stale list + archive/restore."""
+    from app.database import SessionLocal
+    from app.models.skill_card import SkillCard
+    from datetime import datetime, timedelta
+
+    db = SessionLocal()
+    now = datetime.now()
+    s1 = SkillCard(name="待归档技能", status="active", created_by="agent",
+                   last_used_at=(now - timedelta(days=100)).isoformat(),
+                   created_at=(now - timedelta(days=110)).isoformat())
+    db.add(s1)
+    db.commit()
+    sid = s1.id
+    db.close()
+
+    # Trigger curation via API
+    resp = client.post("/api/skills/curate")
+    assert resp.status_code == 200
+    summary = resp.json()
+    assert summary["archived_count"] >= 1
+
+    # List stale
+    resp = client.get("/api/skills/stale")
+    items = resp.json()
+    assert len(items) >= 0
+
+    # Manually restore
+    resp = client.post(f"/api/skills/{sid}/restore")
+    assert resp.json()["status"] == "active"
+
+    # Manually archive
+    resp = client.post(f"/api/skills/{sid}/archive")
+    assert resp.json()["status"] == "archived"
+
+
 def test_context_refresh(client):
     """Refreshing context after new data is added should update it."""
     client.post("/api/users", json={"name": "testuser"})

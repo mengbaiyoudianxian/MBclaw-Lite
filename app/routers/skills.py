@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session as DBSession
 from app.database import get_db
 from app.models.skill_card import SkillCard
 from app.schemas.skill_card import SkillCardCreate, SkillCardUpdate, SkillCardOut
+from app.services.curator import run_curation, get_stale_skills, manually_archive, manually_restore
 
 router = APIRouter(prefix="/api/skills", tags=["skills"])
 
@@ -102,3 +103,40 @@ def mark_used(skill_id: int, db: DBSession = Depends(get_db)):
         card.status = "active"
     db.commit()
     return {"ok": True, "usage_count": card.usage_count}
+
+
+# ── H4: Curator lifecycle management ──────────────────────
+
+@router.post("/curate")
+def trigger_curation(db: DBSession = Depends(get_db)):
+    """Manually trigger a curation cycle. Auto-runs every 24h via scheduler."""
+    summary = run_curation(db)
+    return summary
+
+
+@router.get("/stale")
+def list_stale(db: DBSession = Depends(get_db)):
+    """List stale or archivable skills for review."""
+    skills = get_stale_skills(db)
+    return [{"id": s.id, "name": s.name, "status": s.status,
+             "last_used_at": s.last_used_at, "pinned": s.pinned,
+             "created_by": s.created_by}
+            for s in skills]
+
+
+@router.post("/{skill_id}/archive")
+def archive_skill(skill_id: int, db: DBSession = Depends(get_db)):
+    """Manually archive a skill."""
+    result = manually_archive(db, skill_id)
+    if "error" in result:
+        raise HTTPException(404, result["error"])
+    return result
+
+
+@router.post("/{skill_id}/restore")
+def restore_skill(skill_id: int, db: DBSession = Depends(get_db)):
+    """Restore an archived skill back to active."""
+    result = manually_restore(db, skill_id)
+    if "error" in result:
+        raise HTTPException(404, result["error"])
+    return result
