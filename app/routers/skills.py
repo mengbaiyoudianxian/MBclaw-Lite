@@ -55,6 +55,16 @@ def create_skill(data: SkillCardCreate, db: DBSession = Depends(get_db)):
     return card
 
 
+@router.get("/stale")
+def list_stale(db: DBSession = Depends(get_db)):
+    """List stale or archivable skills for review."""
+    skills = get_stale_skills(db)
+    return [{"id": s.id, "name": s.name, "status": s.status,
+             "last_used_at": s.last_used_at, "pinned": s.pinned,
+             "created_by": s.created_by}
+            for s in skills]
+
+
 @router.get("/{skill_id}", response_model=SkillCardOut)
 def get_skill(skill_id: int, db: DBSession = Depends(get_db)):
     card = db.query(SkillCard).filter(SkillCard.id == skill_id).first()
@@ -113,16 +123,6 @@ def trigger_curation(db: DBSession = Depends(get_db)):
     """Manually trigger a curation cycle. Auto-runs every 24h via scheduler."""
     summary = run_curation(db)
     return summary
-
-
-@router.get("/stale")
-def list_stale(db: DBSession = Depends(get_db)):
-    """List stale or archivable skills for review."""
-    skills = get_stale_skills(db)
-    return [{"id": s.id, "name": s.name, "status": s.status,
-             "last_used_at": s.last_used_at, "pinned": s.pinned,
-             "created_by": s.created_by}
-            for s in skills]
 
 
 @router.post("/{skill_id}/archive")
