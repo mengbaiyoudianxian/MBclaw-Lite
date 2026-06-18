@@ -12,6 +12,7 @@ class Session(Base):
     session_number = Column(Integer, nullable=False)
     title = Column(String, default="")
     status = Column(String, nullable=False, default="active")
+    context = Column(String, default="")
     started_at = Column(String, nullable=False, default=lambda: datetime.now().isoformat())
     ended_at = Column(String, nullable=True)
 

@@ -789,3 +789,100 @@ def test_drift_detection_on_mutation(client):
     # Verify entry persisted
     resp = client.get("/api/projects/1/memory/store/entries?target=memory")
     assert len(resp.json()["entries"]) == 1
+
+
+# ---- Session Bootstrap: cross-session memory retrieval ----
+
+def test_session_bootstrap_context_injection(client):
+    """End-to-end: Session with historical failures → context auto-injected.
+
+    Scenario:
+    - Session 1: tried approach X for feature Y, it failed
+    - Session 1 completes → classify_session saves failed_approach
+    - Session 2: user starts a session about feature Y
+    - Bootstrap auto-retrieves the failed_approach from Session 1
+    - context contains "之前尝试过的失败方案"
+    """
+    client.post("/api/users", json={"name": "testuser"})
+    client.post("/api/projects", json={"name": "MyProject"})
+
+    # ── Session 1: try approach X, it fails ──
+    resp = client.post("/api/projects/1/sessions", json={
+        "title": "尝试用 SQLite 做全文搜索",
+    })
+    s1_id = resp.json()["id"]
+
+    client.post(f"/api/sessions/{s1_id}/messages", json={
+        "role": "user", "content": "用 SQLite FTS5 做全文搜索吧",
+    })
+    client.post(f"/api/sessions/{s1_id}/messages", json={
+        "role": "assistant",
+        "content": "SQLite FTS5 不支持中文分词，搜索结果不准确。建议改用 jieba 分词 + 倒排索引。",
+    })
+
+    # Complete session 1 — this triggers classify_session which saves the failed approach
+    client.patch(f"/api/projects/1/sessions/{s1_id}/complete")
+
+    # Verify the classification node was created with failed_approach
+    resp = client.get("/api/projects/1/topics/failed")
+    assert resp.status_code == 200
+    nodes = resp.json()
+    assert len(nodes) > 0, "分类树应该包含失败方案"
+
+    # ── Session 2: user starts new session about search ──
+    resp = client.post("/api/projects/1/sessions", json={
+        "title": "想重新做搜索功能，用 jieba 分词",
+    })
+    s2_id = resp.json()["id"]
+
+    # Check bootstrap injected context
+    resp = client.get(f"/api/projects/1/sessions/{s2_id}/context")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["has_context"] is True
+    context = data["context"]
+
+    # Should contain reference to the failed approach from session 1
+    assert "SQLite" in context or "FTS" in context or "失败" in context, \
+        f"Context should mention the earlier failed approach. Got: {context[:200]}"
+
+
+def test_session_bootstrap_no_history(client):
+    """Bootstrap on a fresh project with no history should still work (no crash)."""
+    client.post("/api/users", json={"name": "testuser"})
+    p = client.post("/api/projects", json={"name": "EmptyProject"}).json()
+    pid = p["id"]
+
+    resp = client.post(f"/api/projects/{pid}/sessions", json={
+        "title": "随便试个东西",
+    })
+    s_id = resp.json()["id"]
+
+    resp = client.get(f"/api/projects/{pid}/sessions/{s_id}/context")
+    assert resp.status_code == 200
+
+
+def test_context_refresh(client):
+    """Refreshing context after new data is added should update it."""
+    client.post("/api/users", json={"name": "testuser"})
+    p = client.post("/api/projects", json={"name": "P3"}).json()
+    pid = p["id"]
+
+    # Session without history
+    resp = client.post(f"/api/projects/{pid}/sessions", json={"title": "测试"})
+    s_id = resp.json()["id"]
+
+    resp = client.get(f"/api/projects/{pid}/sessions/{s_id}/context")
+    initial_context = resp.json()["context"]
+
+    # Now add a completed session with a failure
+    resp = client.post(f"/api/projects/{pid}/sessions", json={"title": "数据库连接池测试"})
+    s2_id = resp.json()["id"]
+    client.post(f"/api/sessions/{s2_id}/messages", json={
+        "role": "user", "content": "用连接池管理数据库连接",
+    })
+    client.patch(f"/api/projects/{pid}/sessions/{s2_id}/complete")
+
+    # Refresh context
+    resp = client.post(f"/api/projects/{pid}/sessions/{s_id}/context/refresh")
+    assert resp.status_code == 200

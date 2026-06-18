@@ -15,6 +15,7 @@ from app.services.transcript_service import write_final_transcript
 from app.services.action_memory_service import extract_action_memories
 from app.services.classification_service import classify_session
 from app.services.snapshot_service import check_breakthrough, create_snapshot
+from app.services.session_bootstrap import bootstrap_and_store
 
 router = APIRouter(prefix="/api/projects/{project_id}/sessions", tags=["sessions"])
 
@@ -38,6 +39,10 @@ def create_session(project_id: int, data: SessionCreate, db: DBSession = Depends
     db.add(session)
     db.commit()
     db.refresh(session)
+
+    # Auto-inject historical context from classification tree
+    bootstrap_and_store(db, session)
+    db.refresh(session)
     return session
 
 
@@ -45,6 +50,41 @@ def create_session(project_id: int, data: SessionCreate, db: DBSession = Depends
 def list_sessions(project_id: int, db: DBSession = Depends(get_db)):
     _get_project(project_id, db)
     return db.query(Session).filter(Session.project_id == project_id).all()
+
+
+# ── Session context injection ──
+
+@router.get("/{session_id}/context")
+def get_session_context(project_id: int, session_id: int, db: DBSession = Depends(get_db)):
+    """Retrieve auto-generated historical context for this session."""
+    session = db.query(Session).filter(
+        Session.id == session_id, Session.project_id == project_id
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {
+        "session_id": session_id,
+        "title": session.title,
+        "context": session.context or "",
+        "has_context": bool(session.context),
+    }
+
+
+@router.post("/{session_id}/context/refresh")
+def refresh_session_context(project_id: int, session_id: int, db: DBSession = Depends(get_db)):
+    """Re-generate historical context for an existing session."""
+    session = db.query(Session).filter(
+        Session.id == session_id, Session.project_id == project_id
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    bootstrap_and_store(db, session)
+    db.refresh(session)
+    return {
+        "session_id": session_id,
+        "context": session.context or "",
+        "has_context": bool(session.context),
+    }
 
 
 @router.patch("/{session_id}/complete", response_model=SessionOut)
