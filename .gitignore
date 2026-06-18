@@ -41,3 +41,33 @@ coverage/
 
 # Optional REPL history
 .node_repl_history
+
+# Temporary files
+*.tmp
+*.temp
+
+# Cache directories
+.cache/
+.cache-loader/
+
+# Build artifacts
+*.o
+*.obj
+*.dll
+*.dylib
+*.so
+*.exe
+*.out
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Sensitive data
+*.key
+*.pem
+*.cert
+*.crt
+*.p12
+*.pfx
