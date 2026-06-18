@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 
 from app.database import init_db
-from app.routers import users, projects, sessions, messages, summaries, dna, keywords, search, memory, action_memories, topics
+from app.routers import users, projects, sessions, messages, summaries, dna, keywords, search, memory, action_memories, topics, tools, models, integrations, snapshots
 from app.services.idle_scheduler import start_idle_scheduler, mark_request
 
 
@@ -26,6 +26,10 @@ app.include_router(search.router)
 app.include_router(memory.router)
 app.include_router(action_memories.router)
 app.include_router(topics.router)
+app.include_router(tools.router)
+app.include_router(models.router)
+app.include_router(integrations.router)
+app.include_router(snapshots.router)
 
 
 @app.middleware("http")

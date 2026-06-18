@@ -27,5 +27,5 @@ def get_db():
 
 
 def init_db():
-    from app.models import user, project, session, message, summary, keyword, project_dna, action_memory, classification_node  # noqa: F401
+    from app.models import user, project, session, message, summary, keyword, project_dna, action_memory, classification_node, tool, model_profile, external_integration, snapshot  # noqa: F401
     Base.metadata.create_all(bind=engine)

@@ -14,6 +14,7 @@ from app.services.memory_service import memory_flush
 from app.services.transcript_service import write_final_transcript
 from app.services.action_memory_service import extract_action_memories
 from app.services.classification_service import classify_session
+from app.services.snapshot_service import check_breakthrough, create_snapshot
 
 router = APIRouter(prefix="/api/projects/{project_id}/sessions", tags=["sessions"])
 
@@ -68,6 +69,10 @@ def complete_session(project_id: int, session_id: int, db: DBSession = Depends(g
         db.add(am)
     # Project 2: tree classification
     classify_session(db, session)
+    # Project 3: breakthrough snapshot
+    is_breakthrough, reason = check_breakthrough(db, session)
+    if is_breakthrough:
+        create_snapshot(db, session.project_id, reason=reason, trigger_rule=reason)
 
     db.commit()
     db.refresh(session)
