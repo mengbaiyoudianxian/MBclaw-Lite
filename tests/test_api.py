@@ -1,3 +1,5 @@
+import json
+
 def test_root(client):
     resp = client.get("/")
     assert resp.status_code == 200
@@ -1767,6 +1769,177 @@ def test_curator_api(client):
     # Manually archive
     resp = client.post(f"/api/skills/{sid}/archive")
     assert resp.json()["status"] == "archived"
+
+
+# ---- Project 15: 乌托邦计划 ----
+
+def test_utopia_full_pipeline(client):
+    """P15: Full pipeline — import → extract → prioritize → generate tasks."""
+    client.post("/api/users", json={"name": "testuser"})
+
+    # Simulated chat messages (some agent-related, some not)
+    messages = [
+        "今天天气不错",
+        "MBclaw 真好用，帮我自动整理了文件，太方便了！",
+        "那个智能体刚才崩溃了，一直报错，烦死了",
+        "希望 MBclaw 能学会帮我写周报，每周都要写，很麻烦",
+        "这个 bug 什么时候修？导入功能一直卡住",
+        "周末去哪里玩？",
+        "MBclaw 太厉害了，帮我分析数据几分钟就搞定了，赞",
+        "能不能加个自动备份功能？每次都要手动点",
+        "聊天记录搜索功能太难用了，搜不出来东西",
+        "帮我优化一下数据库查询，现在太慢了",
+    ]
+
+    # Run full pipeline
+    resp = client.post("/api/utopia/pipeline", params={
+        "user_id": 1,
+        "source_platform": "wechat",
+        "messages_json": json.dumps(messages),
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["insights_found"] > 0
+    assert data["tasks_created"] >= 1
+
+    # List insights
+    resp = client.get("/api/utopia/insights", params={"user_id": 1})
+    assert len(resp.json()) > 0
+
+    # List tasks
+    resp = client.get("/api/utopia/tasks", params={"user_id": 1})
+    tasks = resp.json()
+    assert len(tasks) > 0
+
+
+def test_utopia_deidentification(client):
+    """P15: De-identification strips PII."""
+    client.post("/api/users", json={"name": "testuser"})
+
+    messages = [
+        "我的手机号是 13812345678，MBclaw 能帮我查一下吗",
+        "身份证 310101199001011234 需要验证",
+    ]
+
+    resp = client.post("/api/utopia/pipeline", params={
+        "user_id": 1, "source_platform": "wechat",
+        "messages_json": json.dumps(messages),
+    })
+    assert resp.status_code == 200
+
+    resp = client.get("/api/utopia/insights", params={"user_id": 1})
+    for insight in resp.json():
+        text = insight["deidentified_text"]
+        assert "13812345678" not in text
+        assert "310101199001011234" not in text
+        assert "[手机号]" in text or "[身份证号]" in text
+
+
+def test_utopia_dual_evaluation(client):
+    """P15: User×0.80 + Self×0.20 → accept/reject/contest."""
+    client.post("/api/users", json={"name": "testuser"})
+
+    # Create a task manually
+    from app.database import SessionLocal
+    from app.models.utopia import UtopiaTask
+    db = SessionLocal()
+    task = UtopiaTask(user_id=1, title="测试任务", description="desc",
+                      category="feature_request", priority=0.5, status="pending",
+                      created_at="2026-06-18T00:00:00")
+    db.add(task)
+    db.commit()
+    tid = task.id
+    db.close()
+
+    # Submit solution
+    resp = client.post(f"/api/utopia/tasks/{tid}/submit", params={
+        "user_id": 1,
+        "solution_text": "我写了一个自动备份脚本",
+        "self_score": 0.7,
+        "self_rationale": "功能完整，代码简洁",
+    })
+    assert resp.status_code == 200
+    sid = resp.json()["submission_id"]
+
+    # User evaluates — high score → accepted
+    resp = client.post(f"/api/utopia/submissions/{sid}/evaluate", params={
+        "user_score": 0.85,
+        "user_feedback": "做得很好，非常实用",
+    })
+    data = resp.json()
+    assert data["decision"] == "accepted"
+    assert 0.6 <= data["composite_score"] <= 1.0
+
+    # Test rejection: low composite
+    resp = client.post(f"/api/utopia/tasks/{tid}/submit", params={
+        "user_id": 1, "solution_text": "另一个方案",
+        "self_score": 0.3, "self_rationale": "一般",
+    })
+    sid2 = resp.json()["submission_id"]
+
+    resp = client.post(f"/api/utopia/submissions/{sid2}/evaluate", params={
+        "user_score": 0.2, "user_feedback": "不好",
+    })
+    assert resp.json()["decision"] == "rejected"
+
+    # Test contested: composite > 50% but user-self gap > 60%
+    resp = client.post(f"/api/utopia/tasks/{tid}/submit", params={
+        "user_id": 1, "solution_text": "争议方案",
+        "self_score": 1.0, "self_rationale": "完美",
+    })
+    sid3 = resp.json()["submission_id"]
+
+    resp = client.post(f"/api/utopia/submissions/{sid3}/evaluate", params={
+        "user_score": 0.39, "user_feedback": "不认可",
+    })
+    # composite = 0.39*0.80 + 1.0*0.20 = 0.512 > 0.50, gap = 0.61 > 0.60 → contested
+    assert resp.json()["decision"] == "contested"
+
+
+def test_utopia_server_inbox(client):
+    """P15: Server inbox collects accepted submissions."""
+    client.post("/api/users", json={"name": "testuser"})
+
+    from app.database import SessionLocal
+    from app.models.utopia import UtopiaTask, UtopiaSubmission
+    db = SessionLocal()
+    task = UtopiaTask(user_id=1, title="收件箱测试", description="d",
+                      category="bug", priority=0.6, status="pending",
+                      created_at="2026-06-18T00:00:00")
+    db.add(task)
+    db.commit()
+    sub = UtopiaSubmission(task_id=task.id, user_id=1,
+                           solution_text="修复了",
+                           self_score=0.6, user_score=0.85,
+                           composite_score=round(0.85*0.80 + 0.6*0.20, 3),
+                           status="accepted",
+                           created_at="2026-06-18T00:00:00")
+    db.add(sub)
+    db.commit()
+    db.close()
+
+    resp = client.get("/api/utopia/server/inbox")
+    assert resp.status_code == 200
+    items = resp.json()
+    assert len(items) >= 1
+
+
+def test_utopia_stats(client):
+    """P15: Aggregate stats."""
+    client.post("/api/users", json={"name": "testuser"})
+
+    resp = client.post("/api/utopia/pipeline", params={
+        "user_id": 1, "source_platform": "wechat",
+        "messages_json": json.dumps([
+            "MBclaw 真好用", "有个 bug", "希望加个功能",
+        ]),
+    })
+    assert resp.status_code == 200
+
+    resp = client.get("/api/utopia/stats", params={"user_id": 1})
+    data = resp.json()
+    assert data["total_insights"] > 0
+    assert data["total_tasks"] > 0
 
 
 def test_context_refresh(client):
