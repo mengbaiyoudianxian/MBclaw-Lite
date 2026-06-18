@@ -1464,6 +1464,143 @@ def test_archetype_transition(client):
     assert resp.json()["feedback_count"] >= 8
 
 
+# ---- Project 14: Thought Collision (combinatorial innovation) ----
+
+def test_thought_collision_trigger(client):
+    """P14a: Trigger a collision session → gets ingredients + prompt."""
+    client.post("/api/users", json={"name": "testuser"})
+    # Create project with some memory and skills
+    from app.database import SessionLocal
+    from app.models.project import Project
+    from app.models.skill_card import SkillCard
+    db = SessionLocal()
+    proj = Project(name="p1", user_id=1)
+    db.add(proj)
+    db.commit()
+
+    # Add some skills
+    for name in ["修复Python导入错误", "优化数据库查询", "集成ChromaDB"]:
+        db.add(SkillCard(name=name, status="active", usage_count=3, pinned=True))
+    db.commit()
+    db.close()
+
+    # Trigger collision
+    resp = client.post("/api/projects/1/collisions/collide")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "collision_id" in data
+    assert "prompt" in data
+    assert "思维碰撞" in data["prompt"]
+    assert data["ingredients"]["skills"] >= 1
+
+
+def test_collision_save_result(client):
+    """P14b: Save LLM synthesis result for a collision."""
+    client.post("/api/users", json={"name": "testuser"})
+
+    # Create collision via engine directly
+    from app.database import SessionLocal
+    from app.models.project import Project
+    from app.services.collision_engine import run_collision
+    db = SessionLocal()
+    proj = Project(name="p1", user_id=1)
+    db.add(proj)
+    db.commit()
+    result = run_collision(db, 1)
+    cid = result["collision_id"]
+    db.close()
+
+    # Save result
+    resp = client.patch(f"/api/projects/1/collisions/{cid}/result", params={
+        "combo_name": "ChromaDB+分词 中文语义搜索引擎",
+        "combo_description": "将jieba分词与ChromaDB向量检索结合，实现中文语义搜索",
+        "expected_synergy": "分词精度提升向量质量，语义匹配准确率预计提升40%",
+        "synergy_score": 0.85,
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["combo_name"] == "ChromaDB+分词 中文语义搜索引擎"
+    assert data["synergy_score"] == 0.85
+
+
+def test_collision_mark_tested(client):
+    """P14c: Mark collision tested → updates status and priority."""
+    client.post("/api/users", json={"name": "testuser"})
+    from app.database import SessionLocal
+    from app.models.project import Project
+    from app.services.collision_engine import run_collision, save_collision_result
+    db = SessionLocal()
+    proj = Project(name="p1", user_id=1)
+    db.add(proj)
+    db.commit()
+    result = run_collision(db, 1)
+    cid = result["collision_id"]
+    save_collision_result(db, cid, "Test Combo", "desc", "syn", 0.7)
+    db.close()
+
+    # Mark tested with success
+    resp = client.post(f"/api/projects/1/collisions/{cid}/test", params={
+        "success": True, "result": "组合效果超出预期",
+    })
+    assert resp.status_code == 200
+    assert resp.json()["success_rate"] == 1.0
+
+    # Mark tested again with success → status changes
+    resp = client.post(f"/api/projects/1/collisions/{cid}/test", params={
+        "success": True, "result": "再次验证成功",
+    })
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "proven"
+
+
+def test_collision_list(client):
+    """P14: List top collisions ordered by priority."""
+    client.post("/api/users", json={"name": "testuser"})
+    from app.database import SessionLocal
+    from app.models.project import Project
+    from app.services.collision_engine import run_collision, save_collision_result
+    db = SessionLocal()
+    proj = Project(name="p1", user_id=1)
+    db.add(proj)
+    db.commit()
+
+    for i in range(3):
+        result = run_collision(db, 1)
+        save_collision_result(db, result["collision_id"],
+                              f"Combo {i}", f"desc {i}", "synergy", 0.5 + i * 0.1)
+    db.close()
+
+    resp = client.get("/api/projects/1/collisions")
+    assert resp.status_code == 200
+    collisions = resp.json()
+    assert len(collisions) >= 3
+
+
+def test_collision_context_for_bootstrap(client):
+    """P14d: Collision context injected into session bootstrap."""
+    client.post("/api/users", json={"name": "testuser"})
+    from app.database import SessionLocal
+    from app.models.project import Project
+    from app.services.collision_engine import run_collision, save_collision_result
+    db = SessionLocal()
+    proj = Project(name="p1", user_id=1)
+    db.add(proj)
+    db.commit()
+    result = run_collision(db, 1)
+    save_collision_result(db, result["collision_id"],
+                          "记忆+技能融合方案",
+                          "将成功记忆中的模式与已验证技能结合",
+                          "预期产生1+1>2的效果", 0.75)
+    db.close()
+
+    resp = client.get("/api/projects/1/collisions/context")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["count"] >= 1
+    assert "思维碰撞" in "\n".join(data["lines"])
+    assert "记忆+技能融合方案" in "\n".join(data["lines"])
+
+
 def test_context_refresh(client):
     """Refreshing context after new data is added should update it."""
     client.post("/api/users", json={"name": "testuser"})

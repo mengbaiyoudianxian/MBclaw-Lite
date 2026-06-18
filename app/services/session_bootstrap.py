@@ -98,6 +98,16 @@ def bootstrap_session_context(db: DBSession, session, title: str = "") -> str:
         parts.append("")
 
     context = "\n".join(parts) if parts else ""
+
+    # P14: Inject top thought collisions
+    try:
+        from app.services.collision_engine import get_collision_context_for_bootstrap
+        collision_lines = get_collision_context_for_bootstrap(project_id)
+        if collision_lines:
+            context = context + "\n" + "\n".join(collision_lines) if context else "\n".join(collision_lines)
+    except Exception:
+        pass
+
     return context
 
 
