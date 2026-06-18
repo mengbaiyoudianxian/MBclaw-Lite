@@ -7,7 +7,8 @@ from app.database import get_db
 from app.models.skill_card import SkillCard
 from app.schemas.skill_card import SkillCardCreate, SkillCardUpdate, SkillCardOut
 from app.services.curator import run_curation, get_stale_skills, manually_archive, manually_restore
-from app.services.skill_extractor import detect_triggers, extract_skill_rules, save_extracted_skill
+from app.services.skill_extractor import detect_triggers, extract_skill_rules, save_extracted_skill, extract_skill_from_conversation, run_skill_extraction
+from app.services.llm_service import get_llm, get_llm_config, configure_llm, LLM_ENABLED
 
 router = APIRouter(prefix="/api/skills", tags=["skills"])
 
@@ -147,8 +148,14 @@ def restore_skill(skill_id: int, db: DBSession = Depends(get_db)):
 
 @router.post("/extract")
 def trigger_skill_extraction(messages_json: str,
+                             use_llm: bool = False,
                              db: DBSession = Depends(get_db)):
-    """H3: Analyze conversation messages, detect triggers, extract SkillCard."""
+    """H3: Analyze conversation messages, detect triggers, extract SkillCard.
+
+    messages_json: JSON array of {role, content} objects.
+    If use_llm=True and LLM_ENABLED, uses AI-powered extraction.
+    Otherwise falls back to rule-based extraction.
+    """
     try:
         import json as _json
         messages = _json.loads(messages_json)
@@ -165,7 +172,18 @@ def trigger_skill_extraction(messages_json: str,
                 "explicit_trigger": triggers["explicit_trigger"],
                 "reason": "no_trigger"}
 
-    skill_data = extract_skill_rules(messages, triggers)
+    # Try LLM extraction if enabled
+    skill_data = None
+    if use_llm and LLM_ENABLED:
+        llm = get_llm()
+        # Use run_skill_extraction's async extract, but sync here for API
+        import asyncio
+        skill_data = asyncio.run(extract_skill_from_conversation(messages, triggers, llm))
+
+    # Fall back to rules
+    if not skill_data:
+        skill_data = extract_skill_rules(messages, triggers)
+
     if not skill_data:
         return {"triggered": True, "trigger_type": triggers["trigger_type"],
                 "success": False, "reason": "extraction_failed"}
@@ -176,6 +194,7 @@ def trigger_skill_extraction(messages_json: str,
         "triggered": True,
         "trigger_type": triggers["trigger_type"],
         "success": True,
+        "llm_used": use_llm and LLM_ENABLED and skill_data is not None,
         "skill_data": skill_data,
         "save_result": save_result,
     }
