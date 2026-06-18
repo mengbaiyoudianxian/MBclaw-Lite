@@ -1025,6 +1025,235 @@ def test_approval_full_auto(client):
     assert resp.json()["decision"] == "auto_approved"
 
 
+# ---- Stage B-9: Startup Checker + Health ----
+
+def test_health_summary(client):
+    resp = client.get("/api/health/summary")
+    assert resp.status_code in (200, 503)
+
+
+# ---- Stage B-7: Task Queue + Message Priority ----
+
+def test_task_queue_crud(client):
+    client.post("/api/users", json={"name": "testuser"})
+    client.post("/api/projects", json={"name": "p1"})
+
+    # Create task
+    resp = client.post("/api/projects/1/tasks?name=测试任务&session_id=0&priority=1")
+    assert resp.status_code == 201
+    task_id = resp.json()["id"]
+    assert task_id > 0
+    assert resp.json()["status"] == "pending"
+
+    # Activate
+    resp = client.post(f"/api/projects/1/tasks/{task_id}/activate")
+    assert resp.json()["status"] == "active"
+
+    # Suspend
+    resp = client.post(f"/api/projects/1/tasks/{task_id}/suspend")
+    assert resp.json()["status"] == "suspended"
+
+    # Resume
+    resp = client.post(f"/api/projects/1/tasks/{task_id}/resume")
+    assert resp.json()["status"] == "active"
+
+    # Progress
+    resp = client.post(f"/api/projects/1/tasks/{task_id}/progress?progress=0.5&tool_call_count=3")
+    assert resp.json()["progress"] == 0.5
+
+    # Complete
+    resp = client.post(f"/api/projects/1/tasks/{task_id}/complete")
+    assert resp.json()["status"] == "completed"
+
+    # Summary
+    resp = client.get("/api/projects/1/tasks")
+    data = resp.json()
+    assert data["completed"] == 1
+
+
+def test_task_queue_fail(client):
+    client.post("/api/users", json={"name": "testuser"})
+    client.post("/api/projects", json={"name": "p1"})
+    resp = client.post("/api/projects/1/tasks?name=会失败的任务")
+    task_id = resp.json()["id"]
+    client.post(f"/api/projects/1/tasks/{task_id}/activate")
+    resp = client.post(f"/api/projects/1/tasks/{task_id}/fail?error=网络超时")
+    assert resp.json()["status"] == "failed"
+    assert resp.json()["error"] == "网络超时"
+
+
+def test_message_interrupt_new_topic(client):
+    """Project 7: New message = different topic → interrupt active task."""
+    client.post("/api/users", json={"name": "testuser"})
+    client.post("/api/projects", json={"name": "p1"})
+
+    # Create session + first task
+    resp = client.post("/api/projects/1/sessions", json={"title": "写Python爬虫"})
+    s1_id = resp.json()["id"]
+
+    resp = client.post("/api/projects/1/tasks/interrupt", params={
+        "session_id": s1_id, "message": "写一个爬虫", "task_name": "爬虫任务",
+    })
+    assert resp.json()["action"] in ("new", "interrupt")
+
+    # User sends unrelated message → should interrupt
+    resp = client.post("/api/projects/1/tasks/interrupt", params={
+        "session_id": s1_id, "message": "改一下数据库schema", "task_name": "数据库任务",
+    })
+    assert resp.json()["action"] == "interrupt"
+
+
+def test_task_active_and_pending(client):
+    client.post("/api/users", json={"name": "testuser"})
+    client.post("/api/projects", json={"name": "p1"})
+
+    # Create and activate a task
+    resp = client.post("/api/projects/1/tasks?name=ActiveTask")
+    t1 = resp.json()["id"]
+    client.post(f"/api/projects/1/tasks/{t1}/activate")
+
+    resp = client.get("/api/projects/1/tasks/active")
+    assert resp.json()["active"] is True
+
+    # Create a pending task
+    client.post("/api/projects/1/tasks?name=PendingTask")
+    resp = client.get("/api/projects/1/tasks/pending")
+    assert len(resp.json()) >= 1
+
+
+# ---- Stage B-4: Full Auto Mode ----
+
+def test_auto_mode_trigger(client):
+    client.post("/api/users", json={"name": "testuser"})
+
+    # Trigger auto mode
+    resp = client.post("/api/projects/1/agent/auto", params={
+        "message": "全自动完成这个功能",
+    })
+    assert resp.json()["mode"] == "auto"
+
+    # Add branches
+    for i in range(3):
+        resp = client.post("/api/projects/1/agent/auto/branch", params={
+            "name": f"方案{i}", "approach": f"方法{i}", "estimated_steps": i + 1,
+        })
+        assert resp.status_code == 200
+
+    # Update branch
+    resp = client.patch("/api/projects/1/agent/auto/branch/1", params={
+        "status": "generated", "error_count": 0,
+    })
+    assert resp.status_code == 200
+
+    # Select best
+    resp = client.post("/api/projects/1/agent/auto/select")
+    assert resp.status_code == 200
+    assert resp.json()["selected_branch"] > 0
+
+
+def test_auto_mode_max_branches(client):
+    client.post("/api/projects/1/agent/auto", params={"message": "全自动"})
+    for i in range(6):
+        resp = client.post("/api/projects/1/agent/auto/branch", params={
+            "name": f"方案{i}", "approach": f"方法{i}",
+        })
+        if i < 5:
+            assert resp.status_code == 200
+        else:
+            assert resp.status_code == 400
+
+
+# ---- Stage B-5: Dual-Key Collaboration ----
+
+def test_dual_key_cycle(client):
+    client.post("/api/users", json={"name": "testuser"})
+
+    # Start
+    resp = client.post("/api/projects/1/agent/dual-key/start", params={
+        "maker_key": "gpt4", "reviewer_key": "claude",
+    })
+    assert resp.status_code == 200
+
+    # Maker produces
+    resp = client.post("/api/projects/1/agent/dual-key/produce", params={
+        "content": "def hello(): print('hello world')", "artifact_type": "code",
+    })
+    assert resp.status_code == 200
+    assert resp.json()["number"] == 1
+
+    # Reviewer evaluates: needs revision
+    resp = client.post("/api/projects/1/agent/dual-key/review", params={
+        "cycle_number": 1, "decision": "revise", "score": 6,
+        "feedback": "Add type hints", "suggested_fix": "Use -> None",
+    })
+    assert resp.json()["review"]["decision"] == "revise"
+
+    # Maker revises
+    resp = client.post("/api/projects/1/agent/dual-key/revise", params={
+        "cycle_number": 1, "revised_content": "def hello() -> None: print('hello')",
+    })
+    assert resp.json()["number"] == 2
+
+    # Reviewer approves revision
+    resp = client.post("/api/projects/1/agent/dual-key/review", params={
+        "cycle_number": 2, "decision": "approve", "score": 9,
+        "feedback": "Good!",
+    })
+    assert resp.json()["review"]["decision"] == "approve"
+
+    # Summary
+    resp = client.get("/api/projects/1/agent/dual-key/summary")
+    assert resp.json()["total_cycles"] == 2
+    assert resp.json()["approved"] == 1
+
+
+# ---- Stage B-10: Sub-Agent Coordination ----
+
+def test_sub_agent_coordination(client):
+    client.post("/api/users", json={"name": "testuser"})
+
+    # Broadcast
+    resp = client.post("/api/projects/1/agent/sub-agent/broadcast", params={
+        "agent_id": "agent-a", "message": "Starting task X",
+    })
+    assert resp.status_code == 200
+
+    # Read channel
+    resp = client.get("/api/projects/1/agent/sub-agent/channel", params={"last_id": 0})
+    assert len(resp.json()) >= 1
+
+    # Claim task
+    resp = client.post("/api/projects/1/agent/sub-agent/claim", params={
+        "agent_id": "agent-a", "task_name": "写测试用例",
+    })
+    assert resp.json()["claimed"] is True
+
+    # Dedup: another agent tries same task
+    resp = client.post("/api/projects/1/agent/sub-agent/claim", params={
+        "agent_id": "agent-b", "task_name": "写测试用例",
+    })
+    assert resp.json()["claimed"] is False
+    assert resp.json()["reason"] == "dedup"
+
+    # Complete
+    resp = client.post("/api/projects/1/agent/sub-agent/complete", params={
+        "agent_id": "agent-a", "task_name": "写测试用例", "result": "Done",
+    })
+    assert resp.json()["completed"] is True
+
+    # Conflict
+    resp = client.post("/api/projects/1/agent/sub-agent/conflict", params={
+        "agent_id": "agent-a", "file_path": "main.py",
+        "description": "Both agents modified main.py",
+    })
+    assert resp.status_code == 200
+
+    # Summary
+    resp = client.get("/api/projects/1/agent/sub-agent/summary")
+    data = resp.json()
+    assert data["tasks_claimed"] >= 1
+
+
 def test_context_refresh(client):
     """Refreshing context after new data is added should update it."""
     client.post("/api/users", json={"name": "testuser"})
