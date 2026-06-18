@@ -1942,6 +1942,73 @@ def test_utopia_stats(client):
     assert data["total_tasks"] > 0
 
 
+def test_utopia_chat_extractor_wechat_txt(client):
+    """P15: Parse WeChat exported .txt format."""
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False,
+                                     encoding="utf-8") as f:
+        f.write("2024-06-15 10:30:00 张三\n")
+        f.write("MBclaw 真好用！\n")
+        f.write("2024-06-15 10:31:00 李四\n")
+        f.write("是啊，自动整理文件太方便了\n")
+        f.write("2024-06-15 10:32:00 张三\n")
+        f.write("不过昨天崩溃了两次，烦\n")
+        tmp = f.name
+
+    resp = client.post("/api/utopia/parse-file", params={
+        "filepath": tmp, "platform": "wechat",
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["count"] == 3
+    assert data["messages"][0]["sender"] == "张三"
+    assert "真好用" in data["messages"][0]["content"]
+
+    # Run full pipeline on it
+    resp = client.post("/api/utopia/pipeline", params={
+        "user_id": 1, "source_platform": "wechat",
+        "messages_json": json.dumps([m["content"] for m in data["messages"]]),
+    })
+    assert resp.status_code == 200
+
+    import os
+    os.unlink(tmp)
+
+
+def test_utopia_chat_extractor_feishu_json(client):
+    """P15: Parse Feishu exported .json format."""
+    import tempfile, os
+    feishu_data = {
+        "messages": [
+            {"create_time": "2024-06-15T10:30:00",
+             "sender": {"name": "王五"},
+             "body": {"content": {"text": "这个 bug 什么时候修？"}}},
+            {"create_time": "2024-06-15T11:00:00",
+             "sender": {"name": "赵六"},
+             "body": {"content": {"text": "MBclaw 如果能学会自动备份就好了"}}},
+        ]
+    }
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False,
+                                     encoding="utf-8") as f:
+        json.dump(feishu_data, f, ensure_ascii=False)
+        tmp = f.name
+
+    resp = client.post("/api/utopia/parse-file", params={
+        "filepath": tmp, "platform": "feishu",
+    })
+    assert resp.status_code == 200
+    assert resp.json()["count"] == 2
+
+    os.unlink(tmp)
+
+
+def test_utopia_discover_endpoint(client):
+    """P15: GET /api/utopia/discover returns platform sources (may be empty in CI)."""
+    resp = client.get("/api/utopia/discover")
+    assert resp.status_code == 200
+    assert "sources" in resp.json()
+
+
 def test_context_refresh(client):
     """Refreshing context after new data is added should update it."""
     client.post("/api/users", json={"name": "testuser"})

@@ -13,8 +13,110 @@ from app.services.utopia_service import (
     prioritize_insights, generate_tasks,
     submit_solution, evaluate_submission, get_server_inbox,
 )
+from app.services.chat_extractor import (
+    discover_chat_sources, extract_messages,
+    parse_wechat_txt, parse_feishu_json, parse_feishu_csv,
+)
 
 router = APIRouter(prefix="/api/utopia", tags=["utopia"])
+
+
+# ── Local Chat Discovery ─────────────────────────────
+
+@router.get("/discover")
+def discover_sources():
+    """Auto-discover local chat databases (WeChat/QQ/Feishu/WeCom)."""
+    sources = discover_chat_sources()
+    return {"sources": sources, "count": len(sources)}
+
+
+@router.post("/extract-local")
+def extract_local(sources_json: str = "", db_key: str = ""):
+    """Extract messages from local chat databases or export files.
+    sources_json: JSON array of {platform, type, path} from /discover
+    db_key: optional decryption key for encrypted databases
+    """
+    import json
+    sources = json.loads(sources_json) if sources_json else discover_chat_sources()
+    result = extract_messages(sources, db_key=db_key if db_key else None)
+    return {
+        "total_count": result["total_count"],
+        "by_platform": {k: len(v) for k, v in result["by_platform"].items()},
+        "sample": {k: v[:3] for k, v in result["by_platform"].items() if v},
+    }
+
+
+@router.post("/extract-local/full")
+def extract_local_full(sources_json: str = "", db_key: str = "",
+                       user_id: int = 0, db: DBSession = Depends(get_db)):
+    """Extract + run full utopia pipeline on local chat data."""
+    import json
+    sources = json.loads(sources_json) if sources_json else discover_chat_sources()
+    result = extract_messages(sources, db_key=db_key if db_key else None)
+
+    if result["total_count"] == 0:
+        return {"error": "no_messages_found", "sources_checked": len(sources)}
+
+    # Flatten all messages
+    all_msgs = []
+    for platform, msgs in result["by_platform"].items():
+        for m in msgs:
+            m["platform"] = platform
+            all_msgs.append(m)
+
+    if not all_msgs:
+        return {"error": "no_messages_extracted"}
+
+    # Just the text content
+    content_list = [m.get("content", "") for m in all_msgs if m.get("content")]
+
+    # Import
+    imp = import_chat_logs(db, user_id or 1, "multi", "local", "", content_list)
+    import_id = imp["import_id"]
+
+    # Extract insights
+    ext = extract_from_messages(db, import_id, user_id or 1, content_list, "multi")
+    insights_count = ext["insights_created"]
+
+    # Prioritize
+    pri = prioritize_insights(db, user_id or 1)
+
+    # Generate tasks
+    tasks = generate_tasks(db, user_id or 1)
+
+    return {
+        "import_id": import_id,
+        "total_messages": len(content_list),
+        "platforms_found": list(result["by_platform"].keys()),
+        "insights_found": insights_count,
+        "insights_scored": pri["scored"],
+        "tasks_created": tasks["tasks_created"],
+    }
+
+
+@router.post("/parse-file")
+def parse_file(filepath: str, platform: str = "auto"):
+    """Parse a single exported chat file (.txt/.json/.csv)."""
+    if platform == "auto":
+        if filepath.endswith(".txt"):
+            platform = "wechat"
+        elif filepath.endswith(".json"):
+            platform = "feishu"
+        elif filepath.endswith(".csv"):
+            platform = "feishu"
+        else:
+            return {"error": "unsupported_format"}
+
+    msgs = []
+    if platform == "wechat" and filepath.endswith(".txt"):
+        msgs = parse_wechat_txt(filepath)
+    elif platform == "feishu" and filepath.endswith(".json"):
+        msgs = parse_feishu_json(filepath)
+    elif platform == "feishu" and filepath.endswith(".csv"):
+        msgs = parse_feishu_csv(filepath)
+
+    return {"filepath": filepath, "platform": platform,
+            "count": len(msgs), "messages": msgs[:10]}
 
 
 # ── Step 1: Import chat logs ─────────────────────────────
