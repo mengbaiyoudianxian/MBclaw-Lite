@@ -1,14 +1,15 @@
 """Unified Agent Runtime router — Projects 4/5/7/10.
 
 /api/projects/{id}/agent:
-  POST /auto          → start full-auto mode (Project 4)
-  POST /interrupt     → message interrupt (Project 7)
-  POST /dual-key      → maker+reviewer cycle (Project 5)
-  POST /sub-agent     → sub-agent coordination (Project 10)
-  GET  /status        → loop + task status
+  POST /run         → execute agent loop for a task (Agent Runtime)
+  POST /auto        → start full-auto mode (Project 4)
+  POST /interrupt   → message interrupt (Project 7)
+  POST /dual-key    → maker+reviewer cycle (Project 5)
+  POST /sub-agent   → sub-agent coordination (Project 10)
+  GET  /status      → loop + task status
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session as DBSession
 
 from app.database import get_db
@@ -16,6 +17,7 @@ from app.services.agent_loop import AgentLoop
 from app.services.auto_mode import get_auto_mode
 from app.services.dual_key import DualKey, ReviewDecision
 from app.services.sub_agent_coordinator import get_coordinator
+from app.services.agent_runtime import run_agent_loop
 
 router = APIRouter(prefix="/api/projects/{project_id}/agent", tags=["agent"])
 
@@ -192,3 +194,90 @@ def sub_agent_conflict(project_id: int, agent_id: str, file_path: str,
 def sub_agent_summary(project_id: int):
     coord = get_coordinator(project_id)
     return coord.get_summary()
+
+
+# ── Agent Runtime: execute task ──────────────────────────
+
+@router.post("/run")
+async def agent_run(
+    project_id: int,
+    payload: dict = Body({}),
+    db: DBSession = Depends(get_db),
+):
+    """Execute the agent loop for a task.
+
+    Creates a new session + task, runs the agent loop, and returns results.
+    Triggers H3 skill extraction if patterns are detected.
+
+    Body (JSON):
+      {"message": "帮我写一个测试", "user_id": 1, "session_id": 0, "max_turns": 5, "mode": "auto"}
+    """
+    from app.models.session import Session as SessionModel
+    from app.models.task_queue import BackgroundTask
+
+    message = payload.get("message", "")
+    user_id = payload.get("user_id", 0)
+    session_id = payload.get("session_id", 0)
+    max_turns = payload.get("max_turns", 10)
+    mode = payload.get("mode", "auto")
+
+    if not message:
+        raise HTTPException(400, "message is required")
+
+    # Find or create task
+    active_task = db.query(BackgroundTask).filter(
+        BackgroundTask.project_id == project_id,
+        BackgroundTask.status == "active",
+    ).first()
+
+    if not active_task:
+        active_task = BackgroundTask(
+            project_id=project_id,
+            name=message[:80] or "untitled",
+            status="active",
+            priority=1,
+            progress=0.0,
+        )
+        db.add(active_task)
+        db.commit()
+        db.refresh(active_task)
+
+    # Find or create session
+    if session_id:
+        session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+        if not session:
+            raise HTTPException(404, f"Session {session_id} not found")
+    else:
+        # Find active session or create new one
+        session = db.query(SessionModel).filter(
+            SessionModel.project_id == project_id,
+            SessionModel.status == "active",
+        ).first()
+
+    if not session:
+        # Calculate next session_number for this project
+        max_num = db.query(SessionModel).filter(
+            SessionModel.project_id == project_id
+        ).count()
+        session = SessionModel(
+            project_id=project_id,
+            session_number=max_num + 1,
+            title=message[:50] or "Agent Run",
+            status="active",
+        )
+        db.add(session)
+        db.commit()
+        db.refresh(session)
+
+    result = await run_agent_loop(
+        db=db,
+        project_id=project_id,
+        user_id=user_id,
+        session_id=session.id,
+        task_id=active_task.id,
+        message=message,
+        max_turns=max_turns,
+        mode=mode,
+    )
+
+    return result
