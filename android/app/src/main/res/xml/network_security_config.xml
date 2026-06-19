@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- 允许本地明文通信 (MBclaw local API) -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <domain includeSubdomains="true">localhost</domain>
+    </domain-config>
+
+    <!-- miclaw 内测 API (当有 beta key 时) -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">api.mify.mioffice.cn</domain>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+
+    <!-- 云端服务器 (用户自建) -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">mbclaw.local</domain>
+    </domain-config>
+
+    <!-- 默认: 禁止明文，使用系统证书 -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
