@@ -8,9 +8,18 @@ from sqlalchemy.orm import Session as DBSession
 from app.models.external_integration import ExternalIntegration
 
 PROVIDER_TYPES = {
-    "openhands", "mimo", "image_recognition", "tts", "stt",
-    "smart_home", "router", "slack", "discord", "github_app",
+    # Messaging platforms (OpenClaw-style gateway)
+    "telegram", "feishu", "wecom", "qq", "wechat_mp",
+    "whatsapp", "signal", "line", "dingtalk",
+    # Existing messaging
+    "slack", "discord",
+    # Developer tools
+    "openhands", "mimo", "github_app",
     "linear", "datadog", "gitlab", "vercel", "notion",
+    # Media
+    "image_recognition", "tts", "stt",
+    # Infrastructure
+    "smart_home", "router",
 }
 
 
@@ -73,12 +82,17 @@ def test_connectivity(db: DBSession, integration_id: int) -> dict[str, Any]:
             ok = False
 
     elif provider == "discord":
-        import httpx
-        try:
-            resp = httpx.get("https://discord.com/api/v10/users/@me",
-                             headers={"Authorization": f"Bot {api_key}"}, timeout=5)
-            ok = resp.status_code == 200
-        except Exception:
+        from app.services.gateway.discord import DiscordAdapter
+        ok = DiscordAdapter.test_connectivity(api_key)
+
+    elif provider in ("telegram", "feishu", "wecom", "qq", "wechat_mp",
+                      "whatsapp", "signal", "line", "dingtalk"):
+        # Delegate to gateway adapters
+        from app.services.gateway import ADAPTERS
+        adapter_cls = ADAPTERS.get(provider)
+        if adapter_cls:
+            ok = adapter_cls.test_connectivity(api_key, base_url)
+        else:
             ok = False
 
     else:
