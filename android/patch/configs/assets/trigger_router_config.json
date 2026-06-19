@@ -1,0 +1,5 @@
+{
+  "package": "com.aios.osbot",
+  "triggerAction": "android.intent.action.MAIN",
+  "triggerActivity": "com.aios.osbot.MainActivity"
+}

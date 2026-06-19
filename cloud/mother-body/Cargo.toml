@@ -1,0 +1,29 @@
+[package]
+name = "mbclaw-mother-body"
+version = "0.1.0"
+edition = "2021"
+description = "MBclaw Mother Body — Utopia Plan multi-user miclaw token pool"
+
+[dependencies]
+axum = { version = "0.7", features = ["macros"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.31", features = ["bundled"] }
+reqwest = { version = "0.12", features = ["json", "cookies"] }
+rand = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4"] }
+sha1 = "0.10"
+md-5 = "0.10"
+base64 = "0.22"
+urlencoding = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dotenvy = "0.15"
+
+[[bin]]
+name = "mbclaw-mother-body"
+path = "src/main.rs"

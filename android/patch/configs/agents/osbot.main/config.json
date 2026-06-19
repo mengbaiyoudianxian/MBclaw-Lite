@@ -1,0 +1,22 @@
+{
+  "id": "osbot.main",
+  "name": "MBclaw 主助手",
+  "description": "Main conversation agent",
+  "enabled": true,
+  "type": "builtin",
+  "execution_mode": "main",
+  "capabilities": [
+    "enable_sub_agent",
+    "enable_heartbeat",
+    "enable_island_notification",
+    "enable_standalone_page"
+  ],
+  "max_agent_depth": 3,
+  "max_iterations": 30,
+  "version": "0.0.1",
+  "tags": ["主助手", "总调度"],
+  "summary": "MBclaw主对话入口，调度所有子Agent和工具",
+  "search_hint": "作为默认入口处理通用对话和任务调度",
+  "rejects": "",
+  "scope": ["general"]
+}
