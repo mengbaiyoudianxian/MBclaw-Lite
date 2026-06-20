@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 
 from app.database import init_db
-from app.routers import users, projects, sessions, messages, summaries, dna, keywords, search, memory, action_memories, topics, tools, models, integrations, snapshots, skills, approvals, health, tasks, agent, feedback, collisions, i18n, utopia, llm
+from app.routers import users, projects, sessions, messages, summaries, dna, keywords, search, memory, action_memories, topics, tools, models, integrations, snapshots, skills, approvals, health, tasks, agent, feedback, collisions, i18n, utopia, llm, providers
 from app.services.idle_scheduler import start_idle_scheduler, mark_request
 from app.services.startup_checker import StartupChecker
 from app.middleware.locale import LocaleMiddleware
@@ -46,6 +46,7 @@ app.include_router(collisions.router)
 app.include_router(i18n.router)
 app.include_router(utopia.router)
 app.include_router(llm.router)
+app.include_router(providers.router)
 
 app.add_middleware(LocaleMiddleware)
 
