@@ -67,6 +67,7 @@ def test_get_db_yields_working_session(isolated_db_path):
 def test_init_db_creates_db_file(isolated_db_path):
     """init_db() creates the SQLite file on disk."""
     importlib.reload(app.db)
+    importlib.reload(importlib.import_module('app.models'))
     assert not os.path.exists(isolated_db_path)
     app.db.init_db()
     assert os.path.exists(isolated_db_path)
