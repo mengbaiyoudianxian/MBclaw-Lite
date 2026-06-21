@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.llm import LLMClient, LLMError, get_llm
 from app.memory import MemoryRepo
+from app.metrics import record_search, record_session_created, record_session_closed
 from app.models import Message, Session as SessionModel  # orchestrator-only
 from app.pipeline import close_session
 
@@ -101,6 +102,8 @@ def create_session(
         db.add(Message(session_id=session.id, role="system", content=rendered))
         db.commit()
 
+    record_session_created()
+
     return SessionResponse(
         session_id=session.id,
         title=session.title,
@@ -147,6 +150,7 @@ def close(
     """Close a session: summarise, persist memory, mark closed."""
     try:
         result = close_session(db, sid, llm)
+        record_session_closed()
     except LLMError as e:
         raise HTTPException(503, str(e))
     except ValueError as e:
@@ -181,7 +185,17 @@ def search(
     """Full-text + keyword search across past session summaries."""
     repo = MemoryRepo(db)
     hits = repo.query(q, top_n=limit)
+    record_search(q, len(hits))
     return [SearchHit(
         session_id=h.session_id, summary=h.summary,
         keywords=h.keywords, score=h.score,
     ) for h in hits]
+
+
+# ── metrics (R1.1) ──────────────────────────────────────────
+
+@router.get("/metrics")
+def get_metrics():
+    """R1.1: 埋点监控 — 命中率 / LLM 解析失败率 / sessions 数."""
+    from app.metrics import snapshot
+    return snapshot()

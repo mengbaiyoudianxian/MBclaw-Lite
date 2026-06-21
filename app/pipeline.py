@@ -8,8 +8,9 @@ from datetime import datetime, timezone
 
 import jieba.analyse
 
-from app.llm import LLMClient, LLMOutput
+from app.llm import LLMClient, LLMError, LLMOutput
 from app.memory import MemoryRepo
+from app.metrics import record_llm_error, record_llm_success
 from app.models import Message, Session  # orchestrator-only imports
 
 
@@ -41,7 +42,12 @@ def close_session(db, sid: int, llm: LLMClient) -> dict:
     msg_dicts = [{"role": m.role, "content": m.content} for m in messages]
 
     # 2. LLM summarise
-    llm_out: LLMOutput = llm.summarize_session(msg_dicts)
+    try:
+        llm_out: LLMOutput = llm.summarize_session(msg_dicts)
+        record_llm_success()
+    except LLMError:
+        record_llm_error()
+        raise
 
     # 3. jieba TF-IDF keywords (top 10, merge with LLM)
     all_text = " ".join(m.content for m in messages)

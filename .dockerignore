@@ -1,0 +1,12 @@
+.git
+__pycache__
+*.pyc
+.venv
+venv
+data/mbclaw.db
+data/transcripts/
+data/archive/
+tests/
+.pytest_cache
+.coverage
+*.md
