@@ -69,10 +69,9 @@ class LLMClient:
         prompt = _SUMMARISE_PROMPT.format(messages_text=text)
 
         url = f"{self.base_url}/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
         body: dict = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
