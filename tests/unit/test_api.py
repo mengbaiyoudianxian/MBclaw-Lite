@@ -53,7 +53,7 @@ def client():
 # ── POST /sessions ──────────────────────────────────────────
 
 def test_create_session(client):
-    r = client.post("/api/sessions", json={"title": "test"})
+    r = client.post("/sessions", json={"title": "test"})
     assert r.status_code == 200
     data = r.json()
     assert data["session_id"] == 1
@@ -61,50 +61,50 @@ def test_create_session(client):
 
 
 def test_create_session_no_injection_on_first(client):
-    r = client.post("/api/sessions", json={"title": "first"})
+    r = client.post("/sessions", json={"title": "first"})
     assert r.json()["injected_system_message"] is None
 
 
 # ── POST /sessions/{sid}/messages ───────────────────────────
 
 def test_add_message(client):
-    client.post("/api/sessions", json={"title": "s1"})
-    r = client.post("/api/sessions/1/messages", json={"role": "user", "content": "hello"})
+    client.post("/sessions", json={"title": "s1"})
+    r = client.post("/sessions/1/messages", json={"role": "user", "content": "hello"})
     assert r.status_code == 200
     assert r.json()["role"] == "user"
 
 
 def test_add_message_to_closed_session_fails(client):
-    client.post("/api/sessions", json={"title": "s1"})
-    client.post("/api/sessions/1/messages", json={"role": "user", "content": "msg1"})
-    client.post("/api/sessions/1/close")
-    r = client.post("/api/sessions/1/messages", json={"role": "user", "content": "late"})
+    client.post("/sessions", json={"title": "s1"})
+    client.post("/sessions/1/messages", json={"role": "user", "content": "msg1"})
+    client.post("/sessions/1/close")
+    r = client.post("/sessions/1/messages", json={"role": "user", "content": "late"})
     assert r.status_code == 400
 
 
 # ── POST /sessions/{sid}/close ──────────────────────────────
 
 def test_close_session(client):
-    client.post("/api/sessions", json={"title": "s1"})
-    client.post("/api/sessions/1/messages", json={"role": "user", "content": "Let us use FTS5."})
-    r = client.post("/api/sessions/1/close")
+    client.post("/sessions", json={"title": "s1"})
+    client.post("/sessions/1/messages", json={"role": "user", "content": "Let us use FTS5."})
+    r = client.post("/sessions/1/close")
     assert r.status_code == 200
     assert r.json()["status"] == "closed"
     assert len(r.json()["summary"]) > 0
 
 
 def test_close_nonexistent_session(client):
-    r = client.post("/api/sessions/999/close")
+    r = client.post("/sessions/999/close")
     assert r.status_code == 400
 
 
 # ── GET /sessions/{sid}/messages ────────────────────────────
 
 def test_list_messages(client):
-    client.post("/api/sessions", json={"title": "s1"})
-    client.post("/api/sessions/1/messages", json={"role": "user", "content": "m1"})
-    client.post("/api/sessions/1/messages", json={"role": "assistant", "content": "m2"})
-    r = client.get("/api/sessions/1/messages")
+    client.post("/sessions", json={"title": "s1"})
+    client.post("/sessions/1/messages", json={"role": "user", "content": "m1"})
+    client.post("/sessions/1/messages", json={"role": "assistant", "content": "m2"})
+    r = client.get("/sessions/1/messages")
     assert r.status_code == 200
     assert len(r.json()) >= 2
 
@@ -112,15 +112,15 @@ def test_list_messages(client):
 # ── GET /search ─────────────────────────────────────────────
 
 def test_search_requires_query(client):
-    r = client.get("/api/search")
+    r = client.get("/search")
     assert r.status_code == 422
 
 
 def test_search_returns_hits(client):
-    client.post("/api/sessions", json={"title": "s1"})
-    client.post("/api/sessions/1/messages", json={"role": "user", "content": "fts5"})
-    client.post("/api/sessions/1/close")
-    r = client.get("/api/search?q=fts5")
+    client.post("/sessions", json={"title": "s1"})
+    client.post("/sessions/1/messages", json={"role": "user", "content": "fts5"})
+    client.post("/sessions/1/close")
+    r = client.get("/search?q=fts5")
     assert r.status_code == 200
 
 

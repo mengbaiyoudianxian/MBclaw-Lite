@@ -9,7 +9,6 @@ CI 用 MBCLAW_LLM_MOCK=1 跑；本地真 LLM 跑加 @pytest.mark.live_llm。
 import pytest
 
 
-@pytest.mark.skip(reason="T6.2 待 OpenHands 实现；勿删此文件")
 def test_mbclaw_remembers_across_sessions(client):
     # ROUND 1: 首次开会话
     r1 = client.post("/sessions", json={"title": "选型"}).json()
