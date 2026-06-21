@@ -92,3 +92,10 @@ def test_summarize_session_raises_after_two_failures():
         c = LLMClient(base_url="http://fake", api_key="k", model="m")
         with pytest.raises(LLMError):
             c.summarize_session([{"role": "user", "content": "hi"}])
+
+def test_summarize_session_rejects_empty_api_key():
+    """Empty API key → LLMError with clear message, no HTTP call."""
+    _, LLMClient, LLMError, _ = _fresh_llm()
+    c = LLMClient(base_url="http://fake", api_key="", model="m")
+    with pytest.raises(LLMError, match="MBCLAW_LLM_API_KEY"):
+        c.summarize_session([{"role": "user", "content": "hi"}])

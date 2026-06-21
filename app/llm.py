@@ -55,7 +55,7 @@ class LLMClient:
 
     def __init__(self, base_url: str | None = None, api_key: str | None = None, model: str | None = None):
         self.base_url = (base_url or os.getenv("MBCLAW_LLM_BASE_URL", "https://api.openai.com/v1")).rstrip("/")
-        self.api_key = api_key or os.getenv("MBCLAW_LLM_API_KEY", "")
+        self.api_key = api_key if api_key is not None else os.getenv("MBCLAW_LLM_API_KEY", "")
         self.model = model or os.getenv("MBCLAW_LLM_MODEL", "gpt-4o-mini")
 
     def summarize_session(self, messages: list[dict]) -> LLMOutput:
@@ -63,6 +63,9 @@ class LLMClient:
 
         Retries once on transient failure; raises LLMError if both attempts fail.
         """
+        if not self.api_key:
+            raise LLMError("LLM API key not configured. Set MBCLAW_LLM_API_KEY.")
+
         text = "\n".join(
             f"[{m.get('role', 'unknown')}]: {m.get('content', '')}" for m in messages
         )

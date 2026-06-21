@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.llm import LLMClient, get_llm
+from app.llm import LLMClient, LLMError, get_llm
 from app.memory import MemoryRepo
 from app.models import Message, Session as SessionModel  # orchestrator-only
 from app.pipeline import close_session
@@ -147,6 +147,8 @@ def close(
     """Close a session: summarise, persist memory, mark closed."""
     try:
         result = close_session(db, sid, llm)
+    except LLMError as e:
+        raise HTTPException(503, str(e))
     except ValueError as e:
         raise HTTPException(400, str(e))
     return CloseResponse(**result)
