@@ -19,7 +19,7 @@ from app.models import Message, Session as SessionModel  # orchestrator-only
 from app.pipeline import close_session
 from app.agent import agent_run
 from app.providers import list_providers
-from app.tools import execute as tool_execute, get_tool, list_tools
+from app.tools import execute as tool_execute, get_tool, list_tools, search_tools
 
 router = APIRouter()
 
@@ -232,24 +232,29 @@ def get_providers(db: Session = Depends(get_db)):
 
 # ── tools ───────────────────────────────────────────────────
 
+class ToolExecuteRequest(BaseModel):
+    name: str
+    content: str = ""
+
+
 @router.get("/tools")
-def get_tools(tag: str = Query(None), db: Session = Depends(get_db)):
-    """List tools, optionally filtered by tag."""
-    return list_tools(db, tag)
+def get_tools(category: str = Query(None), tag: str = Query(None), db: Session = Depends(get_db)):
+    """L1/L2: list tools, optionally filtered by category or tag."""
+    return list_tools(db, category, tag)
+
+
+@router.get("/tools/search")
+def search_tools_endpoint(q: str = Query(min_length=1), db: Session = Depends(get_db)):
+    """Search tools by name/description."""
+    return search_tools(db, q)
 
 
 @router.get("/tools/{tool_id}")
 def get_tool_detail(tool_id: int, db: Session = Depends(get_db)):
-    """Get full tool detail (L3)."""
+    """L3: full tool detail."""
     t = get_tool(db, tool_id)
-    if not t:
-        raise HTTPException(404, "Tool not found")
+    if not t: raise HTTPException(404, "Tool not found")
     return t
-
-
-class ToolExecuteRequest(BaseModel):
-    name: str
-    content: str = ""
 
 
 @router.post("/tools/execute")

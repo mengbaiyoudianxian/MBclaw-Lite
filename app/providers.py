@@ -1,28 +1,15 @@
 """Multi-provider LLM dispatch — R0 extension, derived from model_service.py."""
 
 import os
+from app.models import ModelProfile
 from datetime import datetime, timezone
 
 from pydantic import BaseModel
 from sqlalchemy import DateTime, Float, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, Session
 
-from app.db import Base
 from app.llm import LLMClient
 
-
-class ModelProfile(Base):
-    __tablename__ = "model_profiles"
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    key_alias: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
-    provider: Mapped[str] = mapped_column(String(20), nullable=False, default="openai")
-    model_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    api_base: Mapped[str] = mapped_column(String(200), nullable=False, default="")
-    api_key_env: Mapped[str] = mapped_column(String(50), nullable=False, default="")
-    priority: Mapped[int] = mapped_column(default=0)
-    is_active: Mapped[bool] = mapped_column(default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class ProviderInfo(BaseModel):

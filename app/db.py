@@ -49,8 +49,6 @@ def init_db():
     os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
 
     import app.models  # noqa: F401
-    import app.providers  # noqa: F401 — ModelProfile
-    import app.tools  # noqa: F401 — Tool
     Base.metadata.create_all(bind=engine)
 
     fts_path = os.path.join(os.path.dirname(__file__), "schema", "fts.sql")

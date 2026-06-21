@@ -34,3 +34,39 @@
 {"id": 1, "session_id": 1, "role": "user", "content": "m1", "created_at": "2026-06-21T11:19:20.813580"}
 {"id": 2, "session_id": 1, "role": "assistant", "content": "m2", "created_at": "2026-06-21T11:19:20.817337"}
 {"id": 1, "session_id": 1, "role": "user", "content": "fts5", "created_at": "2026-06-21T11:19:20.899898"}
+{"id": 1, "session_id": 1, "role": "user", "content": "我打算用 SQLite FTS5 做全文检索", "created_at": "2026-06-21T11:24:10.356970"}
+{"id": 2, "session_id": 1, "role": "assistant", "content": "FTS5 配合 jieba 分词足够 MVP", "created_at": "2026-06-21T11:24:10.361002"}
+{"id": 3, "session_id": 1, "role": "user", "content": "决定了，就 FTS5+jieba，不上向量库", "created_at": "2026-06-21T11:24:10.364073"}
+{"id": 1, "session_id": 1, "role": "user", "content": "hello", "created_at": "2026-06-21T11:24:11.080676"}
+{"id": 1, "session_id": 1, "role": "user", "content": "msg1", "created_at": "2026-06-21T11:24:11.150501"}
+{"id": 1, "session_id": 1, "role": "user", "content": "Let us use FTS5.", "created_at": "2026-06-21T11:24:11.214585"}
+{"id": 1, "session_id": 1, "role": "user", "content": "m1", "created_at": "2026-06-21T11:24:11.314419"}
+{"id": 2, "session_id": 1, "role": "assistant", "content": "m2", "created_at": "2026-06-21T11:24:11.318169"}
+{"id": 1, "session_id": 1, "role": "user", "content": "fts5", "created_at": "2026-06-21T11:24:11.408132"}
+{"id": 1, "session_id": 1, "role": "user", "content": "我打算用 SQLite FTS5 做全文检索", "created_at": "2026-06-21T11:24:28.823104"}
+{"id": 2, "session_id": 1, "role": "assistant", "content": "FTS5 配合 jieba 分词足够 MVP", "created_at": "2026-06-21T11:24:28.827195"}
+{"id": 3, "session_id": 1, "role": "user", "content": "决定了，就 FTS5+jieba，不上向量库", "created_at": "2026-06-21T11:24:28.830276"}
+{"id": 1, "session_id": 1, "role": "user", "content": "hello", "created_at": "2026-06-21T11:24:29.582968"}
+{"id": 1, "session_id": 1, "role": "user", "content": "msg1", "created_at": "2026-06-21T11:24:29.632276"}
+{"id": 1, "session_id": 1, "role": "user", "content": "Let us use FTS5.", "created_at": "2026-06-21T11:24:29.695310"}
+{"id": 1, "session_id": 1, "role": "user", "content": "m1", "created_at": "2026-06-21T11:24:29.798777"}
+{"id": 2, "session_id": 1, "role": "assistant", "content": "m2", "created_at": "2026-06-21T11:24:29.802420"}
+{"id": 1, "session_id": 1, "role": "user", "content": "fts5", "created_at": "2026-06-21T11:24:29.897284"}
+{"id": 1, "session_id": 1, "role": "user", "content": "我打算用 SQLite FTS5 做全文检索", "created_at": "2026-06-21T11:24:52.430629"}
+{"id": 2, "session_id": 1, "role": "assistant", "content": "FTS5 配合 jieba 分词足够 MVP", "created_at": "2026-06-21T11:24:52.434879"}
+{"id": 3, "session_id": 1, "role": "user", "content": "决定了，就 FTS5+jieba，不上向量库", "created_at": "2026-06-21T11:24:52.438133"}
+{"id": 1, "session_id": 1, "role": "user", "content": "hello", "created_at": "2026-06-21T11:24:53.158375"}
+{"id": 1, "session_id": 1, "role": "user", "content": "msg1", "created_at": "2026-06-21T11:24:53.230064"}
+{"id": 1, "session_id": 1, "role": "user", "content": "Let us use FTS5.", "created_at": "2026-06-21T11:24:53.294101"}
+{"id": 1, "session_id": 1, "role": "user", "content": "m1", "created_at": "2026-06-21T11:24:53.396398"}
+{"id": 2, "session_id": 1, "role": "assistant", "content": "m2", "created_at": "2026-06-21T11:24:53.400282"}
+{"id": 1, "session_id": 1, "role": "user", "content": "fts5", "created_at": "2026-06-21T11:24:53.490158"}
+{"id": 1, "session_id": 1, "role": "user", "content": "我打算用 SQLite FTS5 做全文检索", "created_at": "2026-06-21T11:25:54.638686"}
+{"id": 2, "session_id": 1, "role": "assistant", "content": "FTS5 配合 jieba 分词足够 MVP", "created_at": "2026-06-21T11:25:54.642837"}
+{"id": 3, "session_id": 1, "role": "user", "content": "决定了，就 FTS5+jieba，不上向量库", "created_at": "2026-06-21T11:25:54.645961"}
+{"id": 1, "session_id": 1, "role": "user", "content": "hello", "created_at": "2026-06-21T11:25:55.349877"}
+{"id": 1, "session_id": 1, "role": "user", "content": "msg1", "created_at": "2026-06-21T11:25:55.420921"}
+{"id": 1, "session_id": 1, "role": "user", "content": "Let us use FTS5.", "created_at": "2026-06-21T11:25:55.480311"}
+{"id": 1, "session_id": 1, "role": "user", "content": "m1", "created_at": "2026-06-21T11:25:55.578177"}
+{"id": 2, "session_id": 1, "role": "assistant", "content": "m2", "created_at": "2026-06-21T11:25:55.581791"}
+{"id": 1, "session_id": 1, "role": "user", "content": "fts5", "created_at": "2026-06-21T11:25:55.676318"}
