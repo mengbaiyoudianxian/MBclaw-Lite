@@ -17,6 +17,7 @@ from app.llm import LLMOutput
 def client():
     """TestClient wired to a real FastAPI app with mocked LLM."""
     with tempfile.TemporaryDirectory() as tmp:
+        os.environ.setdefault("MBCLAW_LLM_MOCK", "1")
         db_path = os.path.join(tmp, "test.db")
         old_db = os.environ.get("MBCLAW_DB_PATH")
         os.environ["MBCLAW_DB_PATH"] = db_path

@@ -63,6 +63,13 @@ class LLMClient:
 
         Retries once on transient failure; raises LLMError if both attempts fail.
         """
+        if os.getenv("MBCLAW_LLM_MOCK") == "1":
+            return LLMOutput(
+                summary="[MOCK] 对话摘要。",
+                keywords=["mock"],
+                experiences=[],
+            )
+
         if not self.api_key:
             raise LLMError("LLM API key not configured. Set MBCLAW_LLM_API_KEY.")
 

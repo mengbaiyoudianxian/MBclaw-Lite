@@ -11,6 +11,8 @@ from unittest.mock import patch, MagicMock
 
 def _fresh_llm():
     """Reload app.llm so test-isolation across other test files is clean."""
+    os.environ.pop("MBCLAW_LLM_MOCK", None)
+    """Reload app.llm so test-isolation across other test files is clean."""
     importlib.reload(importlib.import_module("app.llm"))
     from app.llm import LLMOutput, LLMClient, LLMError, _Experience
     return LLMOutput, LLMClient, LLMError, _Experience
