@@ -1,0 +1,6 @@
+{
+  "backend": "http://47.83.2.188",
+  "download": "http://121.199.57.195",
+  "_note": "MBclaw 端点注册中心 - 改这里即可全网换 IP, 客户端 5min 内自动同步",
+  "version": 1
+}
