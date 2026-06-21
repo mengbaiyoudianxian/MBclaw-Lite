@@ -8,10 +8,12 @@ from datetime import datetime, timezone
 
 import jieba.analyse
 
+from app.classification import classify_content
 from app.llm import LLMClient, LLMError, LLMOutput
 from app.memory import MemoryRepo
 from app.metrics import record_llm_error, record_llm_success
 from app.models import Message, Session  # orchestrator-only imports
+from app.skills import extract_skill
 
 
 def close_session(db, sid: int, llm: LLMClient) -> dict:
@@ -40,6 +42,7 @@ def close_session(db, sid: int, llm: LLMClient) -> dict:
         raise ValueError(f"No messages in session {sid}")
 
     msg_dicts = [{"role": m.role, "content": m.content} for m in messages]
+    all_text = " ".join(m.content for m in messages)
 
     # 2. LLM summarise
     try:
@@ -50,7 +53,6 @@ def close_session(db, sid: int, llm: LLMClient) -> dict:
         raise
 
     # 3. jieba TF-IDF keywords (top 10, merge with LLM)
-    all_text = " ".join(m.content for m in messages)
     jieba_kws = jieba.analyse.extract_tags(all_text, topK=10, withWeight=True)
     kw_map: dict[str, float] = {}
     for kw in llm_out.keywords:
@@ -70,11 +72,19 @@ def close_session(db, sid: int, llm: LLMClient) -> dict:
     session.ended_at = datetime.now(timezone.utc)
     db.commit()
 
+    # 6. Classification
+    category = classify_content(llm, all_text)
+
+    # 7. Skill extraction
+    skill = extract_skill(llm, all_text)
+
     return {
         "session_id": sid,
         "status": "closed",
         "summary": llm_out.summary,
         "keywords": [{"keyword": k, "weight": w} for k, w in merged_kws],
         "experiences": exp_dicts,
+        "category": category,
+        "skill_extracted": skill,
         "stats": {"message_count": len(messages), "cached": False},
     }

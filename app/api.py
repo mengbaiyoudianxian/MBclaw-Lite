@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.agent import agent_run
 from app.db import get_db
 from app.llm import LLMClient, LLMError, get_llm
 from app.memory import MemoryRepo
@@ -70,6 +71,8 @@ class CloseResponse(BaseModel):
     summary: str
     keywords: list[dict]
     experiences: list[dict]
+    category: str = ""
+    skill_extracted: dict | None = None
     stats: dict
 
 
@@ -190,6 +193,63 @@ def search(
         session_id=h.session_id, summary=h.summary,
         keywords=h.keywords, score=h.score,
     ) for h in hits]
+
+
+# ── agent ──────────────────────────────────────────────────
+
+class AgentRequest(BaseModel):
+    message: str
+    max_turns: int = 5
+
+
+@router.post("/agent/run")
+def agent_chat(
+    req: AgentRequest,
+    db: Session = Depends(get_db),
+    llm: LLMClient = Depends(get_llm),
+):
+    """Run one agent turn: context → LLM → tools → response."""
+    # Find or create active session for agent
+    session = db.query(SessionModel).filter(
+        SessionModel.status == "active"
+    ).order_by(SessionModel.started_at.desc()).first()
+
+    if not session:
+        session = SessionModel(title="Agent Chat", status="active")
+        db.add(session)
+        db.commit()
+        db.refresh(session)
+        record_session_created()
+
+    try:
+        result = agent_run(db, session.id, req.message, llm, req.max_turns)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    return result
+
+
+@router.get("/agent/status")
+def agent_status(db: Session = Depends(get_db)):
+    """Return current agent session info."""
+    session = db.query(SessionModel).filter(
+        SessionModel.status == "active"
+    ).order_by(SessionModel.started_at.desc()).first()
+
+    if not session:
+        return {"active": False, "session_id": None, "message_count": 0}
+
+    msg_count = db.query(Message).filter(
+        Message.session_id == session.id
+    ).count()
+
+    return {
+        "active": True,
+        "session_id": session.id,
+        "title": session.title,
+        "message_count": msg_count,
+        "started_at": session.started_at.isoformat() if session.started_at else None,
+    }
 
 
 # ── metrics (R1.1) ──────────────────────────────────────────
