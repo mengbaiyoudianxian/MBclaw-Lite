@@ -10,14 +10,17 @@
 ## ⚠️ R0 冻结期（2026-06-21 起）
 
 本仓库**冻结新增功能**，进入收敛重构期。详见：
-- 现状审计：[MBclaw/design/audit/AUDIT-2026-06-21.md](https://github.com/mengbaiyoudianxian/MBclaw/blob/main/design/audit/AUDIT-2026-06-21.md)
-- 新 MVP 定义：[MBclaw/design/mvp/MVP-v2.md](https://github.com/mengbaiyoudianxian/MBclaw/blob/main/design/mvp/MVP-v2.md)
-- 收敛路线图：[MBclaw/design/roadmap/ROADMAP-v2.md](https://github.com/mengbaiyoudianxian/MBclaw/blob/main/design/roadmap/ROADMAP-v2.md)
+- **🔥 执行计划**：[MBclaw/design/roadmap/DEV-PLAN-r0.md](https://github.com/mengbaiyoudianxian/MBclaw/blob/main/design/roadmap/DEV-PLAN-r0.md) ← OpenHands 入口
+- 生死评审：[SURVIVAL-REVIEW-2026-06-21.md](https://github.com/mengbaiyoudianxian/MBclaw/blob/main/design/audit/SURVIVAL-REVIEW-2026-06-21.md)
+- MVP 定义：[MVP-r0-1week.md](https://github.com/mengbaiyoudianxian/MBclaw/blob/main/design/mvp/MVP-r0-1week.md)
+- 架构：[ARCH-r0.md](https://github.com/mengbaiyoudianxian/MBclaw/blob/main/design/architecture/ARCH-r0.md)
+- 记忆系统：[MEMORY-SYSTEM-r0.md](https://github.com/mengbaiyoudianxian/MBclaw/blob/main/design/memory/MEMORY-SYSTEM-r0.md)
+- Agent 评审：[AGENT-r0.md](https://github.com/mengbaiyoudianxian/MBclaw/blob/main/design/agent/AGENT-r0.md)
 
 **R0 期内只接受**：
-1. 把指定 services 物理迁出 Core（清单：[MBclaw-Memory/drafts/2026-06-21_legacy-services-to-be-extracted.md](https://github.com/mengbaiyoudianxian/MBclaw-Memory/blob/main/drafts/2026-06-21_legacy-services-to-be-extracted.md)）
-2. Bug 修复
-3. 测试补强
+1. **执行 DEV-PLAN-r0 中的 T0.1-T7.2** 任务（按编号顺序）
+2. 把指定 services 物理迁出 Core（[Memory 清单](https://github.com/mengbaiyoudianxian/MBclaw-Memory/blob/main/drafts/2026-06-21_legacy-services-to-be-extracted.md)）
+3. Bug 修复
 
 **拒绝**：任何新特性、新服务、新模型。
 
