@@ -32,6 +32,7 @@ app.include_router(api_router)
 
 
 @app.get("/health")
+@app.get("/health/health")
 def health():
     """Liveness check: DB and basic config are reachable."""
     db_ok = os.path.exists(os.getenv("MBCLAW_DB_PATH", "data/mbclaw.db"))
