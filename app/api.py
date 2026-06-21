@@ -17,6 +17,7 @@ from app.llm import LLMClient, LLMError, get_llm
 from app.memory import MemoryRepo
 from app.models import Message, Session as SessionModel  # orchestrator-only
 from app.pipeline import close_session
+from app.agent import agent_run
 from app.providers import list_providers
 from app.tools import execute as tool_execute, get_tool, list_tools
 
@@ -187,6 +188,38 @@ def search(
         session_id=h.session_id, summary=h.summary,
         keywords=h.keywords, score=h.score,
     ) for h in hits]
+
+
+# ── agent ──────────────────────────────────────────────────
+
+class AgentRequest(BaseModel):
+    message: str
+    max_turns: int = 5
+
+
+@router.post("/agent/run")
+def agent_chat(req: AgentRequest, db: Session = Depends(get_db), llm: LLMClient = Depends(get_llm)):
+    """Run agent loop: context → LLM → tools → response."""
+    session = db.query(SessionModel).filter(SessionModel.status == "active").order_by(SessionModel.started_at.desc()).first()
+    if not session:
+        session = SessionModel(title="Agent Chat", status="active")
+        db.add(session); db.commit(); db.refresh(session)
+        record_session_created()
+    try:
+        return agent_run(db, session.id, req.message, llm, req.max_turns)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.get("/agent/status")
+def agent_status(db: Session = Depends(get_db)):
+    """Current agent session info."""
+    session = db.query(SessionModel).filter(SessionModel.status == "active").order_by(SessionModel.started_at.desc()).first()
+    if not session:
+        return {"active": False, "session_id": None, "message_count": 0}
+    count = db.query(Message).filter(Message.session_id == session.id).count()
+    return {"active": True, "session_id": session.id, "title": session.title, "message_count": count,
+            "started_at": session.started_at.isoformat() if session.started_at else None}
 
 
 # ── providers ───────────────────────────────────────────────
