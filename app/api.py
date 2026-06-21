@@ -14,11 +14,14 @@ from sqlalchemy.orm import Session
 
 from app.agent import agent_run
 from app.db import get_db
+from app.feedback import get_feedback_stats, submit_feedback
 from app.llm import LLMClient, LLMError, get_llm
 from app.memory import MemoryRepo
 from app.metrics import record_search, record_session_created, record_session_closed
+from app.snapshot import create_snapshot, list_snapshots
 from app.models import Message, Session as SessionModel  # orchestrator-only
 from app.pipeline import close_session
+from app.search import layered_search
 
 router = APIRouter()
 
@@ -250,6 +253,71 @@ def agent_status(db: Session = Depends(get_db)):
         "message_count": msg_count,
         "started_at": session.started_at.isoformat() if session.started_at else None,
     }
+
+
+# ── snapshot ──────────────────────────────────────────────
+
+class SnapshotRequest(BaseModel):
+    name: str
+    description: str = ""
+
+
+@router.post("/snapshots")
+def create_snapshot_endpoint(req: SnapshotRequest, db: Session = Depends(get_db)):
+    """Create a named database snapshot."""
+    return create_snapshot(db, req.name, req.description)
+
+
+@router.get("/snapshots")
+def list_snapshots_endpoint():
+    """List all available snapshots."""
+    return list_snapshots()
+
+
+# ── layered search ─────────────────────────────────────────
+
+class LayeredHit(BaseModel):
+    session_id: int
+    summary: str
+    keywords: list[str]
+    score: float
+    matched_in: list[str]
+
+
+@router.get("/search/layered", response_model=list[LayeredHit])
+def search_layered(
+    q: str = Query(min_length=1),
+    limit: int = Query(default=5, ge=1, le=20),
+    db: Session = Depends(get_db),
+):
+    """L1+L2+L3 layered search with progressive scoring."""
+    hits = layered_search(db, q, top_n=limit)
+    record_search(q, len(hits))
+    return hits
+
+
+# ── feedback ───────────────────────────────────────────────
+
+class FeedbackRequest(BaseModel):
+    session_id: int
+    rating: int
+    category: str = "general"
+    comment: str = ""
+
+
+@router.post("/feedback")
+def create_feedback(req: FeedbackRequest, db: Session = Depends(get_db)):
+    """Submit user feedback for a session."""
+    try:
+        return submit_feedback(db, req.session_id, req.rating, req.category, req.comment)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.get("/feedback/stats")
+def feedback_stats(db: Session = Depends(get_db)):
+    """Get aggregated feedback statistics."""
+    return get_feedback_stats(db)
 
 
 # ── metrics (R1.1) ──────────────────────────────────────────

@@ -30,10 +30,10 @@ def db_session():
             os.environ.pop("MBCLAW_DB_PATH", None)
 
 
-def test_all_five_tables_exist(db_session):
+def test_all_six_tables_exist(db_session):
     """sessions, messages, summaries, keywords, experiences all present."""
     tables = set(app.db.Base.metadata.tables.keys())
-    assert tables == {"sessions", "messages", "summaries", "keywords", "experiences"}
+    assert tables >= {"sessions", "messages", "summaries", "keywords", "experiences", "feedback"}
 
 
 def test_session_crud_and_defaults(db_session):

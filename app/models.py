@@ -76,3 +76,16 @@ class Experience(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
     last_recalled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
     recall_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+# ── Feedback ────────────────────────────────────────────────
+
+class Feedback(Base):
+    __tablename__ = "feedback"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    rating: Mapped[int] = mapped_column(Integer, nullable=False)
+    category: Mapped[str] = mapped_column(String(50), nullable=False, default="general")
+    comment: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
