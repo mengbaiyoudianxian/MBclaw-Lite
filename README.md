@@ -7,51 +7,80 @@
 
 ---
 
-## ⚠️ R0 冻结期（2026-06-21 起）
+## 🔴 给所有执行 AI（必读，否则你的 PR 一定被拒）
 
-本仓库**冻结新增功能**，进入收敛重构期。详见：
-- **🔥 执行计划**：[MBclaw/design/roadmap/DEV-PLAN-r0.md](https://github.com/mengbaiyoudianxian/MBclaw/blob/main/design/roadmap/DEV-PLAN-r0.md) ← OpenHands 入口
-- 生死评审：[SURVIVAL-REVIEW-2026-06-21.md](https://github.com/mengbaiyoudianxian/MBclaw/blob/main/design/audit/SURVIVAL-REVIEW-2026-06-21.md)
-- MVP 定义：[MVP-r0-1week.md](https://github.com/mengbaiyoudianxian/MBclaw/blob/main/design/mvp/MVP-r0-1week.md)
-- 架构：[ARCH-r0.md](https://github.com/mengbaiyoudianxian/MBclaw/blob/main/design/architecture/ARCH-r0.md)
-- 记忆系统：[MEMORY-SYSTEM-r0.md](https://github.com/mengbaiyoudianxian/MBclaw/blob/main/design/memory/MEMORY-SYSTEM-r0.md)
-- Agent 评审：[AGENT-r0.md](https://github.com/mengbaiyoudianxian/MBclaw/blob/main/design/agent/AGENT-r0.md)
-
-**R0 期内只接受**：
-1. **执行 DEV-PLAN-r0 中的 T0.1-T7.2** 任务（按编号顺序）
-2. 把指定 services 物理迁出 Core（[Memory 清单](https://github.com/mengbaiyoudianxian/MBclaw-Memory/blob/main/drafts/2026-06-21_legacy-services-to-be-extracted.md)）
-3. Bug 修复
-
-**拒绝**：任何新特性、新服务、新模型。
+1. **[AGENTS.md](AGENTS.md)** — 6 条铁律 + 工作流
+2. **[PROMPTS-FOR-EXECUTORS.md](PROMPTS-FOR-EXECUTORS.md)** — 7 个可直接复制的提示词
+3. **[.github/pull_request_template.md](.github/pull_request_template.md)** — PR 模板
+4. **[.github/workflows/guardrails.yml](.github/workflows/guardrails.yml)** — CI 自动拦截（依赖/行数/直 import）
 
 ---
 
-## 当前快照（审计时点）
+## 当前分支状态
 
-| 指标 | 当前 | R1 目标 |
-|---|---|---|
-| 代码行 (`app/`) | 10379 | < 3000 |
-| Services | 39 | 7 |
-| Routers | 27 | 8 |
-| Models | 24 | 8 |
-| Tests | 102（单文件） | 80+（分层） |
-
-R1 完成定义见 `MVP-v2.md §2`。
-
----
-
-## 技术栈（不变）
-
-- Python 3.10+ / FastAPI / SQLAlchemy 2.0 / SQLite (WAL+FTS5) / jieba
-- LLM：API Only（不本地跑模型）
-
-## 启动
+| 分支 | 状态 |
+|---|---|
+| `main` | 旧版本（10379 行），R0 冻结，仅作历史参考 |
+| **`r0`** | **新版骨架已就绪**，等 OpenHands 按 DEV-PLAN-r0 填充 |
 
 ```bash
+git checkout r0
+```
+
+---
+
+## R0 骨架（已就绪）
+
+```
+app/
+├── __init__.py
+├── db.py           # T1.1 (placeholder)
+├── models.py       # T1.2 (placeholder)
+├── schema/fts.sql  # T1.3 (placeholder)
+├── llm.py          # T2.1 (placeholder)
+├── memory.py       # T3.1-T3.4 (placeholder)
+├── pipeline.py     # T4.1 (placeholder)
+├── api.py          # T5.1 (placeholder)
+└── main.py         # T5.2 (placeholder)
+tests/
+├── conftest.py
+├── unit/
+└── e2e/test_memory_loop.py  # T6.2 唯一不可妥协测试
+scripts/
+└── check_lines.sh  # 本地预算检查
+.github/
+├── pull_request_template.md
+├── ISSUE_TEMPLATE/task.md
+└── workflows/guardrails.yml
+```
+
+每个 placeholder 文件已写注释：任务 ID、约束、必含、不允许。OpenHands 拉到即可执行。
+
+---
+
+## 设计文档入口（必读）
+
+| 文档 | 用途 |
+|---|---|
+| **🔥 [DEV-PLAN-r0](https://github.com/mengbaiyoudianxian/MBclaw/blob/main/design/roadmap/DEV-PLAN-r0.md)** | OpenHands 任务清单 |
+| [SURVIVAL-REVIEW](https://github.com/mengbaiyoudianxian/MBclaw/blob/main/design/audit/SURVIVAL-REVIEW-2026-06-21.md) | 项目生死评审 |
+| [MVP-r0-1week](https://github.com/mengbaiyoudianxian/MBclaw/blob/main/design/mvp/MVP-r0-1week.md) | MVP 边界 |
+| [ARCH-r0](https://github.com/mengbaiyoudianxian/MBclaw/blob/main/design/architecture/ARCH-r0.md) | 7 文件单进程架构 |
+| [MEMORY-SYSTEM-r0](https://github.com/mengbaiyoudianxian/MBclaw/blob/main/design/memory/MEMORY-SYSTEM-r0.md) | 数据库 + 召回 |
+| [AGENT-r0](https://github.com/mengbaiyoudianxian/MBclaw/blob/main/design/agent/AGENT-r0.md) | R0 = 无 Agent |
+
+---
+
+## 启动（仅在 r0 全部实现后）
+
+```bash
+git checkout r0
 pip install -r requirements.txt
 cp .env.example .env  # 填入 LLM API key
 uvicorn app.main:app --reload
 ```
+
+---
 
 ## 三仓库分流（CTO 规则）
 

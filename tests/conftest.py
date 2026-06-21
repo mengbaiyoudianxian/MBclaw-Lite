@@ -1,37 +1,21 @@
+"""共享 pytest fixtures。OpenHands 在 T6.1 中扩展。"""
+
 import os
 import shutil
 import pytest
-from fastapi.testclient import TestClient
-from app.database import init_db, SessionLocal, engine, Base
-from app.main import app
-from app.config import DATA_DIR
 
 
 @pytest.fixture(autouse=True)
-def setup_db():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    # Clean filesystem memory/transcript dirs (NOT chroma - ChromaDB holds file locks)
-    for sub in ("memory", "transcripts"):
-        path = os.path.join(DATA_DIR, sub)
-        if os.path.exists(path):
-            shutil.rmtree(path)
-    # Reset ChromaDB collection cache
-    from app.services.vector_store import _collections
-    _collections.clear()
+def setup_clean_data(tmp_path, monkeypatch):
+    """每个测试独立 data 目录。"""
+    db = tmp_path / "mbclaw.db"
+    monkeypatch.setenv("MBCLAW_DB_PATH", str(db))
+    monkeypatch.setenv("MBCLAW_LLM_MOCK", "1")
     yield
-    Base.metadata.drop_all(bind=engine)
+    # tmp_path 自动清理
 
 
 @pytest.fixture
 def client():
-    return TestClient(app)
-
-
-@pytest.fixture
-def db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    """T5.2 实现 app/main.py 后启用。"""
+    pytest.skip("client fixture 待 T5.2 实现 main.py 后启用")

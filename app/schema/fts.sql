@@ -1,0 +1,9 @@
+-- T1.3 — 由 OpenHands 实现。
+-- 必含:
+--   CREATE VIRTUAL TABLE messages_fts USING fts5(
+--     content, content='messages', content_rowid='id', tokenize='unicode61');
+--   3 个触发器 messages_ai / messages_ad / messages_au
+--   CREATE VIRTUAL TABLE experiences_fts USING fts5(
+--     title, content, content='experiences', content_rowid='id', tokenize='unicode61');
+--   3 个触发器 experiences_ai / experiences_ad / experiences_au
+-- 不允许: 多于 2 个 FTS 表
