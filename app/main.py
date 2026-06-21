@@ -15,6 +15,8 @@ from app.db import init_db
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    from app.startup import print_startup_banner
+    print_startup_banner()
     init_db()
     yield
 

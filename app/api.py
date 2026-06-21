@@ -18,6 +18,7 @@ from app.feedback import get_feedback_stats, submit_feedback
 from app.llm import LLMClient, LLMError, get_llm
 from app.memory import MemoryRepo
 from app.metrics import record_search, record_session_created, record_session_closed
+from app.providers import get_available_providers
 from app.snapshot import create_snapshot, list_snapshots
 from app.models import Message, Session as SessionModel  # orchestrator-only
 from app.pipeline import close_session
@@ -318,6 +319,14 @@ def create_feedback(req: FeedbackRequest, db: Session = Depends(get_db)):
 def feedback_stats(db: Session = Depends(get_db)):
     """Get aggregated feedback statistics."""
     return get_feedback_stats(db)
+
+
+# ── providers ──────────────────────────────────────────────
+
+@router.get("/providers")
+def list_providers():
+    """List configured LLM providers."""
+    return get_available_providers()
 
 
 # ── metrics (R1.1) ──────────────────────────────────────────
