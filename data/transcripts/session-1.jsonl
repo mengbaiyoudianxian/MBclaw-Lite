@@ -1,0 +1,27 @@
+{"id": 1, "session_id": 1, "role": "user", "content": "我打算用 SQLite FTS5 做全文检索", "created_at": "2026-06-21T11:16:59.533353"}
+{"id": 2, "session_id": 1, "role": "assistant", "content": "FTS5 配合 jieba 分词足够 MVP", "created_at": "2026-06-21T11:16:59.537420"}
+{"id": 3, "session_id": 1, "role": "user", "content": "决定了，就 FTS5+jieba，不上向量库", "created_at": "2026-06-21T11:16:59.540505"}
+{"id": 1, "session_id": 1, "role": "user", "content": "hello", "created_at": "2026-06-21T11:17:00.196727"}
+{"id": 1, "session_id": 1, "role": "user", "content": "msg1", "created_at": "2026-06-21T11:17:00.233921"}
+{"id": 1, "session_id": 1, "role": "user", "content": "Let us use FTS5.", "created_at": "2026-06-21T11:17:00.282375"}
+{"id": 1, "session_id": 1, "role": "user", "content": "m1", "created_at": "2026-06-21T11:17:00.360147"}
+{"id": 2, "session_id": 1, "role": "assistant", "content": "m2", "created_at": "2026-06-21T11:17:00.363703"}
+{"id": 1, "session_id": 1, "role": "user", "content": "fts5", "created_at": "2026-06-21T11:17:00.434173"}
+{"id": 1, "session_id": 1, "role": "user", "content": "我打算用 SQLite FTS5 做全文检索", "created_at": "2026-06-21T11:17:31.979977"}
+{"id": 2, "session_id": 1, "role": "assistant", "content": "FTS5 配合 jieba 分词足够 MVP", "created_at": "2026-06-21T11:17:31.983924"}
+{"id": 3, "session_id": 1, "role": "user", "content": "决定了，就 FTS5+jieba，不上向量库", "created_at": "2026-06-21T11:17:31.988192"}
+{"id": 1, "session_id": 1, "role": "user", "content": "hello", "created_at": "2026-06-21T11:17:32.667498"}
+{"id": 1, "session_id": 1, "role": "user", "content": "msg1", "created_at": "2026-06-21T11:17:32.709504"}
+{"id": 1, "session_id": 1, "role": "user", "content": "Let us use FTS5.", "created_at": "2026-06-21T11:17:32.765952"}
+{"id": 1, "session_id": 1, "role": "user", "content": "m1", "created_at": "2026-06-21T11:17:32.865129"}
+{"id": 2, "session_id": 1, "role": "assistant", "content": "m2", "created_at": "2026-06-21T11:17:32.868902"}
+{"id": 1, "session_id": 1, "role": "user", "content": "fts5", "created_at": "2026-06-21T11:17:32.938044"}
+{"id": 1, "session_id": 1, "role": "user", "content": "我打算用 SQLite FTS5 做全文检索", "created_at": "2026-06-21T11:18:30.594239"}
+{"id": 2, "session_id": 1, "role": "assistant", "content": "FTS5 配合 jieba 分词足够 MVP", "created_at": "2026-06-21T11:18:30.598386"}
+{"id": 3, "session_id": 1, "role": "user", "content": "决定了，就 FTS5+jieba，不上向量库", "created_at": "2026-06-21T11:18:30.601550"}
+{"id": 1, "session_id": 1, "role": "user", "content": "hello", "created_at": "2026-06-21T11:18:31.294565"}
+{"id": 1, "session_id": 1, "role": "user", "content": "msg1", "created_at": "2026-06-21T11:18:31.338634"}
+{"id": 1, "session_id": 1, "role": "user", "content": "Let us use FTS5.", "created_at": "2026-06-21T11:18:31.411078"}
+{"id": 1, "session_id": 1, "role": "user", "content": "m1", "created_at": "2026-06-21T11:18:31.494805"}
+{"id": 2, "session_id": 1, "role": "assistant", "content": "m2", "created_at": "2026-06-21T11:18:31.498422"}
+{"id": 1, "session_id": 1, "role": "user", "content": "fts5", "created_at": "2026-06-21T11:18:31.575146"}

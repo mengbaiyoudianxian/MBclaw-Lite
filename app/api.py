@@ -17,6 +17,8 @@ from app.llm import LLMClient, LLMError, get_llm
 from app.memory import MemoryRepo
 from app.models import Message, Session as SessionModel  # orchestrator-only
 from app.pipeline import close_session
+from app.providers import list_providers
+from app.tools import execute as tool_execute, get_tool, list_tools
 
 router = APIRouter()
 
@@ -185,3 +187,41 @@ def search(
         session_id=h.session_id, summary=h.summary,
         keywords=h.keywords, score=h.score,
     ) for h in hits]
+
+
+# ── providers ───────────────────────────────────────────────
+
+@router.get("/providers")
+def get_providers(db: Session = Depends(get_db)):
+    """List configured LLM providers with status."""
+    return [p.model_dump() for p in list_providers(db)]
+
+
+# ── tools ───────────────────────────────────────────────────
+
+@router.get("/tools")
+def get_tools(tag: str = Query(None), db: Session = Depends(get_db)):
+    """List tools, optionally filtered by tag."""
+    return list_tools(db, tag)
+
+
+@router.get("/tools/{tool_id}")
+def get_tool_detail(tool_id: int, db: Session = Depends(get_db)):
+    """Get full tool detail (L3)."""
+    t = get_tool(db, tool_id)
+    if not t:
+        raise HTTPException(404, "Tool not found")
+    return t
+
+
+class ToolExecuteRequest(BaseModel):
+    name: str
+    content: str = ""
+
+
+@router.post("/tools/execute")
+def execute_tool(req: ToolExecuteRequest, db: Session = Depends(get_db)):
+    """Execute a tool and return the result."""
+    from app.tools import bump_usage
+    bump_usage(db, req.name)
+    return {"name": req.name, "result": tool_execute(db, req.name, req.content)}
