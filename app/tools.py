@@ -5,6 +5,7 @@ Supports: file ops, shell, memory, web, browser, media, device, classification.
 """
 
 import json, os, subprocess
+from typing import Optional
 
 from sqlalchemy.orm import Session
 
