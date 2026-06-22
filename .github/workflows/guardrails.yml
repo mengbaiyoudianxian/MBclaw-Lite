@@ -1,0 +1,118 @@
+name: R0 Guardrails
+
+on:
+  pull_request:
+    branches: [r0, main]
+  push:
+    branches: [r0]
+
+jobs:
+  forbidden-deps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check forbidden dependencies in requirements.txt
+        run: |
+          if [ -f requirements.txt ]; then
+            FORBIDDEN="langchain|llama-index|chromadb|qdrant|weaviate|pinecone|milvus|celery|redis|rabbitmq|kafka|^rq$|alembic"
+            if grep -iE "$FORBIDDEN" requirements.txt; then
+              echo "::error::Forbidden dependency detected. See Lite/AGENTS.md §3."
+              exit 1
+            fi
+          fi
+
+  no-direct-model-import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: api.py / pipeline.py must not import memory tables directly
+        run: |
+          if [ -d app ]; then
+            BAD=0
+            for f in app/api.py app/pipeline.py; do
+              [ -f "$f" ] || continue
+              if grep -E "from app\.models import.*\b(Summary|Keyword|Experience)\b" "$f"; then
+                echo "::error::$f directly imports a memory table. Use MemoryRepo instead. See AGENTS.md §2."
+                BAD=1
+              fi
+            done
+            exit $BAD
+          fi
+
+  line-budget:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Total app/ lines must stay ≤ 1500
+        run: |
+          if [ -d app ]; then
+            LINES=$(find app -name '*.py' -not -name '__init__.py' | xargs cat | wc -l)
+            echo "Current app/ lines: $LINES"
+            if [ "$LINES" -gt 1500 ]; then
+              echo "::error::app/ has $LINES lines (>1500). MVP budget exceeded. See MVP-r0 §1."
+              exit 1
+            fi
+          fi
+
+  per-file-budget:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Per-file budget per DEV-PLAN
+        run: |
+          declare -A BUDGET=(
+            [app/db.py]=80
+            [app/models.py]=120
+            [app/llm.py]=120
+            [app/memory.py]=200
+            [app/pipeline.py]=80
+            [app/api.py]=300
+            [app/main.py]=80
+          )
+          FAIL=0
+          for f in "${!BUDGET[@]}"; do
+            [ -f "$f" ] || continue
+            LINES=$(wc -l < "$f")
+            MAX=${BUDGET[$f]}
+            if [ "$LINES" -gt "$MAX" ]; then
+              echo "::error::$f has $LINES lines, budget is $MAX."
+              FAIL=1
+            fi
+          done
+          exit $FAIL
+
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - name: Install
+        run: |
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+      - name: Run unit tests
+        run: |
+          if [ -d tests/unit ]; then
+            pytest tests/unit -q --cov=app --cov-report=term --cov-fail-under=0
+          fi
+
+  e2e-mock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - name: Install
+        run: |
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+      - name: Run e2e (mock LLM only)
+        env:
+          MBCLAW_LLM_MOCK: "1"
+        run: |
+          if [ -d tests/e2e ]; then
+            pytest tests/e2e -q -m "not live_llm"
+          fi
