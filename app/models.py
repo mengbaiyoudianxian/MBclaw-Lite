@@ -1,6 +1,7 @@
-"""T1.2 — ORM models for MBclaw R0 memory service.
+"""T1.2 — ORM models for MBclaw Memory System v1.
 
-5 tables: sessions, messages, summaries, keywords, experiences.
+7 tables: workspaces, sessions(+workspace_id), messages, summaries, keywords,
+         experiences, memory(v2), tools, model_profiles.
 No business methods.  All mutable state lives in MemoryRepo (T3.x).
 """
 
@@ -22,6 +23,7 @@ class Session(Base):
     __tablename__ = "sessions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("workspaces.id"), nullable=True, default=None)
     title: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
     started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
@@ -76,6 +78,37 @@ class Experience(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
     last_recalled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
     recall_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+# ── Workspace (Memory System v1) ──────────────────────────────
+
+class Workspace(Base):
+    __tablename__ = "workspaces"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
+    topic: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
+    is_archived: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+# ── Memory (Memory System v1 — 统一记忆表) ────────────────────
+
+class Memory(Base):
+    __tablename__ = "memory"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(Integer, ForeignKey("workspaces.id"), nullable=False)
+    session_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("sessions.id"), nullable=True)
+    type: Mapped[str] = mapped_column(String(20), nullable=False)  # episode/semantic/procedure/failure
+    content_json: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[bytes | None] = mapped_column(nullable=True)  # float32 BLOB
+    importance_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.5)
+    tags: Mapped[str] = mapped_column(Text, nullable=False, default="[]")  # JSON array
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
+    usage_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
 
 # ── Tool ────────────────────────────────────────────────────
 

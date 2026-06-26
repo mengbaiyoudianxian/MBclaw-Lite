@@ -263,3 +263,168 @@ def execute_tool(req: ToolExecuteRequest, db: Session = Depends(get_db)):
     from app.tools import bump_usage
     bump_usage(db, req.name)
     return {"name": req.name, "result": tool_execute(db, req.name, req.content)}
+
+
+# ── Workspace (Memory System v1) ─────────────────────────────
+
+from app.workspace.manager import WorkspaceManager
+
+
+class CreateWorkspaceRequest(BaseModel):
+    name: str
+    topic: str = ""
+
+
+class WorkspaceResponse(BaseModel):
+    id: int
+    name: str
+    topic: str
+    created_at: str
+    is_archived: int
+
+
+@router.post("/workspace/create", response_model=WorkspaceResponse)
+def create_workspace(req: CreateWorkspaceRequest, db: Session = Depends(get_db)):
+    """创建新工作区。"""
+    mgr = WorkspaceManager(db)
+    try:
+        ws = mgr.create(req.name, req.topic)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+    return WorkspaceResponse(
+        id=ws.id, name=ws.name, topic=ws.topic,
+        created_at=str(ws.created_at), is_archived=ws.is_archived,
+    )
+
+
+@router.get("/workspace/list", response_model=list[WorkspaceResponse])
+def list_workspaces(db: Session = Depends(get_db)):
+    """列出活跃工作区。"""
+    mgr = WorkspaceManager(db)
+    return [
+        WorkspaceResponse(
+            id=w.id, name=w.name, topic=w.topic,
+            created_at=str(w.created_at), is_archived=w.is_archived,
+        )
+        for w in mgr.list_active()
+    ]
+
+
+@router.post("/workspace/{ws_id}/archive")
+def archive_workspace(ws_id: int, db: Session = Depends(get_db)):
+    """归档工作区。"""
+    mgr = WorkspaceManager(db)
+    try:
+        mgr.archive(ws_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    return {"ok": True, "id": ws_id}
+
+# ── Memory System v1 新端点 ──
+
+class CloseV2Response(BaseModel):
+    session_id: int
+    status: str
+    old_pipeline: dict
+    memory_v2: dict
+
+@router.post("/session/{sid}/close-v2", response_model=CloseV2Response)
+def close_session_v2(sid: int, db: Session = Depends(get_db), llm: LLMClient = Depends(get_llm)):
+    """关闭会话 + v2 memory encoder (新旧管线并行)."""
+    from app.pipeline import close_session as _old_close, _write_memory_v2
+    old_result = _old_close(db, sid, llm)
+    v2_result = _write_memory_v2(db, sid, llm)
+    return CloseV2Response(
+        session_id=sid,
+        status="closed",
+        old_pipeline=old_result,
+        memory_v2=v2_result,
+    )
+
+
+class MemorySearchResponse(BaseModel):
+    results: list[dict]
+    query: str
+    workspace_id: int
+
+@router.get("/memory/search", response_model=MemorySearchResponse)
+def search_memory_v2(q: str = "", ws: int = 1, limit: int = 5, db: Session = Depends(get_db)):
+    """v2 记忆检索 (embedding + FTS5 + failure boost)."""
+    from app.memory import search_v2_memory
+    results = search_v2_memory(db, ws, q, limit)
+    return MemorySearchResponse(results=results, query=q, workspace_id=ws)
+
+
+@router.get("/memory/failures")
+def list_failures(ws: int = 1, db: Session = Depends(get_db)):
+    """列出 workspace 的失败记忆."""
+    from app.models import Memory
+    import json as _json
+    failures = db.query(Memory).filter(
+        Memory.workspace_id == ws,
+        Memory.type == "failure"
+    ).order_by(Memory.importance_score.desc()).limit(20).all()
+    return [
+        {"id": f.id, "content": _json.loads(f.content_json) if f.content_json else {},
+         "importance": f.importance_score, "usage": f.usage_count}
+        for f in failures
+    ]
+
+
+@router.get("/workspace/{ws_id}/context")
+def workspace_context(ws_id: int, q: str = "", db: Session = Depends(get_db)):
+    """获取 workspace 注入上下文."""
+    from app.context.builder import ContextBuilder
+    builder = ContextBuilder(db)
+    text, ids = builder.build(ws_id, q)
+    return {"context": text, "used_memory_ids": ids, "workspace_id": ws_id}
+
+# Phase1: Memory Search API
+from pydantic import BaseModel as _PB
+
+class MemorySearchRequest(_PB):
+    query: str
+    workspace_id: int = 1
+    user_id: str = ''
+    max_results: int = 5
+
+class MemorySearchResponse(_PB):
+    items: list[dict]
+    warnings: list[dict]
+
+@router.post('/memory/search', response_model=MemorySearchResponse)
+def memory_search(req: MemorySearchRequest, db: Session = Depends(get_db)):
+    from app.memory import search_phase1
+    results = search_phase1(db, req.workspace_id, req.query, req.max_results)
+    items = []
+    warnings = []
+    for r in results:
+        items.append({
+            'id': str(r.get('id','')),
+            'layer': str(r.get('type','')),
+            'summary': str(r.get('summary',''))[:100],
+            'snippet': str(r.get('content',''))[:150],
+            'relevance_score': float(r.get('score', 0)),
+            'importance': float(r.get('importance', 0.5)),
+        })
+        if r.get('type') == 'failure' and float(r.get('score',0)) > 0.7:
+            c = r.get('content', {})
+            warnings.append({
+                'level': 'strong',
+                'message': 'History failure: ' + str(c.get('task','')) + ' - ' + str(c.get('lesson',''))
+            })
+    return MemorySearchResponse(items=items, warnings=warnings)
+
+@router.get('/memory/failures')
+def memory_failures(ws: int = 1, db: Session = Depends(get_db)):
+    from app.models import Memory as _Mem
+    j = __import__('json')
+    failures = db.query(_Mem).filter(
+        _Mem.workspace_id == ws, _Mem.type == 'failure'
+    ).order_by(_Mem.importance_score.desc()).limit(20).all()
+    return [{
+        'id': f.id, 'summary': f.summary,
+        'content': j.loads(f.content_json) if f.content_json else {},
+        'importance': f.importance_score,
+        'usage': f.usage_count or 0
+    } for f in failures]

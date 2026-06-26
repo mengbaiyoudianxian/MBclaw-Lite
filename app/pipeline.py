@@ -72,3 +72,22 @@ def close_session(db, sid: int, llm: LLMClient) -> dict:
         "experiences": exp_dicts,
         "stats": {"message_count": len(messages), "cached": False},
     }
+
+def _write_memory_v2(db, sid, llm, workspace_id=None):
+    try:
+        from app.models import Message, Session
+        from app.encoder import MemoryEncoder
+        from app.memory import write_v2_memory
+        if workspace_id is None:
+            sess = db.get(Session, sid)
+            workspace_id = sess.workspace_id if sess and sess.workspace_id else 1
+        msgs = db.query(Message).filter(Message.session_id==sid).order_by(Message.created_at).all()
+        msg_dicts = [{"role":m.role,"content":m.content} for m in msgs]
+        enc = MemoryEncoder(llm)
+        result = enc.encode(msg_dicts, workspace_id)
+        written = write_v2_memory(db, workspace_id, sid, result)
+        return {"ok":True,"count":len(written)}
+    except Exception as e:
+        import logging
+        logging.getLogger("mbclaw").warning("Memory v2 failed: %s", str(e))
+        return {"ok":False,"error":str(e)}
