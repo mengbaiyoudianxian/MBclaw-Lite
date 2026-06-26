@@ -78,6 +78,11 @@ def _write_memory_v2(db, sid, llm, workspace_id=None):
         from app.models import Message, Session
         from app.encoder import MemoryEncoder
         from app.memory import write_v2_memory
+        from app.deduplicator import Deduplicator
+        from app.phase1_models import MemoryNode
+        from app.llm import LLMClient as _LC
+        import json as _j, struct as _st
+
         if workspace_id is None:
             sess = db.get(Session, sid)
             workspace_id = sess.workspace_id if sess and sess.workspace_id else 1
@@ -85,9 +90,50 @@ def _write_memory_v2(db, sid, llm, workspace_id=None):
         msg_dicts = [{"role":m.role,"content":m.content} for m in msgs]
         enc = MemoryEncoder(llm)
         result = enc.encode(msg_dicts, workspace_id)
-        written = write_v2_memory(db, workspace_id, sid, result)
-        return {"ok":True,"count":len(written)}
+
+        dedup = Deduplicator(threshold=0.85)
+        existing = db.query(MemoryNode).filter(MemoryNode.workspace_id==workspace_id).all()
+        llm_embed = _LC()
+        merged_count = 0
+
+        for mem_type, items in [
+            ("episode", result.episodes),
+            ("semantic", result.semantics),
+            ("procedure", result.procedures),
+            ("failure", result.failures),
+        ]:
+            kept = []
+            for item in items:
+                try:
+                    content_str = _j.dumps(item.__dict__ if hasattr(item,"__dict__") else item, ensure_ascii=False)
+                    emb_vec = llm_embed.embed(content_str)
+                    if emb_vec and len(emb_vec) >= 100:
+                        emb_blob = _st.pack("<" + str(len(emb_vec)) + "f", *emb_vec)
+                    else:
+                        emb_blob = None
+                    dup, sim = dedup.find_duplicate(emb_vec, existing) if emb_blob else (None, 0)
+                    if dup:
+                        merged = dedup.merge(dup, item, emb_vec, sim)
+                        dup.content_json = merged["content_json"]
+                        dup.importance = merged["importance"]
+                        dup.embedding = merged["embedding"]
+                        dup.tags = merged["tags"]
+                        merged_count += 1
+                    else:
+                        kept.append(item)
+                except Exception:
+                    kept.append(item)
+            if mem_type == "episode": result.episodes = kept
+            elif mem_type == "semantic": result.semantics = kept
+            elif mem_type == "procedure": result.procedures = kept
+            else: result.failures = kept
+
+        written = write_v2_memory(db, workspace_id, sid, result) if result.total_count > 0 else []
+        if len(written) > 2:
+            from app.l3_refiner import submit_async
+            submit_async(written, workspace_id)
+        return {"ok":True,"count":len(written),"merged":merged_count}
     except Exception as e:
         import logging
-        logging.getLogger("mbclaw").warning("Memory v2 failed: %s", str(e))
+        logging.getLogger("mbclaw").warning("v2 failed, bypass: %s", str(e))
         return {"ok":False,"error":str(e)}
